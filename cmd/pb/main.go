@@ -116,11 +116,10 @@ func (m model) viewAttached() string {
 		Foreground(lipgloss.Color("#888888")).
 		Italic(true)
 
-	help := helpStyle.Render("[Press Ctrl+P to detach]")
+	help := helpStyle.Render("[Press Ctrl+D to detach]")
 
-	// In Phase 3, we'll actually show Claude's output here
-	// For now, just show a placeholder
-	return fmt.Sprintf("%s\n\n[Attached to Claude - I/O forwarding not yet implemented]\n", help)
+	// This view is not actually used - attach happens outside Bubble Tea
+	return fmt.Sprintf("%s\n\n[Attached to Claude]\n", help)
 }
 
 func main() {
@@ -155,8 +154,15 @@ func main() {
 			break
 		}
 
+		// Clear screen before attach for clean transition
+		fmt.Print("\033[2J\033[H")
+
 		// Attach to Claude session
 		result, err := m.session.Attach()
+
+		// Clear screen after detach for clean return to UI
+		fmt.Print("\033[2J\033[H")
+
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Attach error: %v\n", err)
 			// Continue to show UI
@@ -166,7 +172,7 @@ func main() {
 		// Handle attach result
 		switch result {
 		case session.AttachDetached:
-			// User pressed Ctrl+P, return to home screen
+			// User pressed Ctrl+D, return to home screen
 			continue
 		case session.AttachExited:
 			// Claude exited, return to home screen

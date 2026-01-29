@@ -15,12 +15,12 @@ import (
 type AttachResult int
 
 const (
-	AttachDetached AttachResult = iota // User pressed Ctrl+P
+	AttachDetached AttachResult = iota // User pressed Ctrl+D
 	AttachExited                       // Claude process exited
 )
 
 // Attach connects the current terminal to the Claude session
-// Returns when the user presses Ctrl+P (detach) or Claude exits
+// Returns when the user presses Ctrl+D (detach) or Claude exits
 func (m *Manager) Attach() (AttachResult, error) {
 	if !m.IsRunning() {
 		return AttachExited, fmt.Errorf("session not running")
@@ -65,7 +65,7 @@ func (m *Manager) Attach() (AttachResult, error) {
 		done <- err
 	}()
 
-	// Copy input from stdin to pty, intercepting Ctrl+P
+	// Copy input from stdin to pty, intercepting Ctrl+D
 	go func() {
 		buf := make([]byte, 1024)
 		for {
@@ -75,18 +75,23 @@ func (m *Manager) Attach() (AttachResult, error) {
 				return
 			}
 
-			// Check for Ctrl+P (0x10)
+			// Check for Ctrl+D (0x04) - detach signal
+			// We need to check and filter it out before writing to pty
+			filtered := make([]byte, 0, n)
 			for i := 0; i < n; i++ {
-				if buf[i] == 0x10 { // Ctrl+P
+				if buf[i] == 0x04 { // Ctrl+D
 					close(detach)
 					return
 				}
+				filtered = append(filtered, buf[i])
 			}
 
-			// Write to pty
-			if _, err := ptmx.Write(buf[:n]); err != nil {
-				done <- err
-				return
+			// Write filtered input to pty
+			if len(filtered) > 0 {
+				if _, err := ptmx.Write(filtered); err != nil {
+					done <- err
+					return
+				}
 			}
 		}
 	}()
