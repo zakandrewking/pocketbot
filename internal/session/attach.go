@@ -62,6 +62,16 @@ func (m *Manager) Attach() (AttachResult, error) {
 		m.cmd.Process.Signal(syscall.SIGWINCH)
 	}
 
+	// Draw minimal overlay at bottom of screen
+	// Save cursor, move to bottom, draw overlay, restore cursor
+	fmt.Print("\033[s")        // Save cursor position
+	fmt.Print("\033[999;1H")   // Move to bottom of screen
+	fmt.Print("\033[2K")       // Clear line
+	fmt.Print("\033[7m")       // Reverse video (inverted colors)
+	fmt.Print(" Ctrl+D to detach ")
+	fmt.Print("\033[0m")       // Reset styling
+	fmt.Print("\033[u")        // Restore cursor position
+
 	// Create channels for I/O completion and detach signal
 	done := make(chan error, 1)
 	detach := make(chan struct{})
@@ -120,10 +130,20 @@ func (m *Manager) Attach() (AttachResult, error) {
 	// Wait for detach or error
 	select {
 	case <-detach:
+		// Clear overlay before detaching
+		fmt.Print("\033[s")        // Save cursor
+		fmt.Print("\033[999;1H")   // Move to bottom
+		fmt.Print("\033[2K")       // Clear line
+		fmt.Print("\033[u")        // Restore cursor
 		// Give a moment for terminal to settle after detach
 		time.Sleep(50 * time.Millisecond)
 		return AttachDetached, nil
 	case err := <-done:
+		// Clear overlay before exiting
+		fmt.Print("\033[s")        // Save cursor
+		fmt.Print("\033[999;1H")   // Move to bottom
+		fmt.Print("\033[2K")       // Clear line
+		fmt.Print("\033[u")        // Restore cursor
 		// Give a moment for terminal to settle after exit
 		time.Sleep(50 * time.Millisecond)
 		if err != nil && err != io.EOF {
