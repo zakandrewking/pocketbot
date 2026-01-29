@@ -112,8 +112,11 @@ func TestHomeViewShowsSessionStatus(t *testing.T) {
 
 	// View without running session
 	view := m.View()
-	if contains(view, "Claude is running") {
-		t.Error("Should not show 'Claude is running' when session is not running")
+	if !contains(view, "not running") {
+		t.Error("Should show 'not running' when session is stopped")
+	}
+	if contains(view, "● running") {
+		t.Error("Should not show '● running' when session is not running")
 	}
 
 	// Start session
@@ -122,7 +125,10 @@ func TestHomeViewShowsSessionStatus(t *testing.T) {
 
 	// View with running session
 	view = m.View()
-	if !contains(view, "Claude is running") {
-		t.Error("Should show 'Claude is running' when session is running")
+	if !contains(view, "● running") {
+		t.Error("Should show '● running' when session is running")
+	}
+	if !contains(view, "Claude:") {
+		t.Error("Should show 'Claude:' label")
 	}
 }

@@ -92,23 +92,41 @@ func (m model) viewHome() string {
 		MarginTop(1).
 		MarginBottom(1)
 
-	subtitleStyle := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("#04B575"))
+	labelStyle := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("#888888"))
 
-	statusStyle := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("#FFA500"))
+	runningStyle := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("#04B575")).
+		Bold(true)
+
+	stoppedStyle := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("#666666"))
+
+	instructionStyle := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("#AAAAAA")).
+		Italic(true)
 
 	title := titleStyle.Render("🤖 Welcome to PocketBot!")
 
+	// Claude status line
+	var claudeStatus string
+	if m.session.IsRunning() {
+		status := runningStyle.Render("● running (detached)")
+		claudeStatus = fmt.Sprintf("%s %s", labelStyle.Render("Claude:"), status)
+	} else {
+		status := stoppedStyle.Render("○ not running")
+		claudeStatus = fmt.Sprintf("%s %s", labelStyle.Render("Claude:"), status)
+	}
+
+	// Instructions
 	var instructions string
 	if m.session.IsRunning() {
-		status := statusStyle.Render("● Claude is running")
-		instructions = subtitleStyle.Render("Press 'c' to attach, Ctrl+C to quit.")
-		return fmt.Sprintf("\n%s\n\n%s\n\n%s\n\n", title, status, instructions)
+		instructions = instructionStyle.Render("Press 'c' to attach • Ctrl+C to quit")
 	} else {
-		instructions = subtitleStyle.Render("Press 'c' to start Claude, Ctrl+C to quit.")
-		return fmt.Sprintf("\n%s\n\n%s\n\n", title, instructions)
+		instructions = instructionStyle.Render("Press 'c' to start Claude • Ctrl+C to quit")
 	}
+
+	return fmt.Sprintf("\n%s\n\n%s\n\n%s\n\n", title, claudeStatus, instructions)
 }
 
 func (m model) viewAttached() string {
