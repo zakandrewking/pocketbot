@@ -137,8 +137,8 @@ func main() {
 		m.shouldAttach = false
 		m.viewState = viewHome
 
-		// Run Bubble Tea UI
-		p := tea.NewProgram(m)
+		// Run Bubble Tea UI with alternate screen buffer
+		p := tea.NewProgram(m, tea.WithAltScreen())
 		finalModel, err := p.Run()
 		if err != nil {
 			fmt.Printf("Error: %v\n", err)
@@ -154,14 +154,9 @@ func main() {
 			break
 		}
 
-		// Clear screen before attach for clean transition
-		fmt.Print("\033[2J\033[H")
-
 		// Attach to Claude session
+		// Note: No screen clearing needed - alternate screen handles separation
 		result, err := m.session.Attach()
-
-		// Clear screen after detach for clean return to UI
-		fmt.Print("\033[2J\033[H")
 
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Attach error: %v\n", err)

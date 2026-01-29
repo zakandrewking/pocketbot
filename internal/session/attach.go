@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"github.com/creack/pty"
 	"golang.org/x/term"
@@ -55,6 +56,12 @@ func (m *Manager) Attach() (AttachResult, error) {
 		return AttachExited, fmt.Errorf("failed to set pty size: %w", err)
 	}
 
+	// Force redraw by sending a resize signal
+	// This ensures Claude redraws its screen when we reattach
+	if m.cmd != nil && m.cmd.Process != nil {
+		m.cmd.Process.Signal(syscall.SIGWINCH)
+	}
+
 	// Create channels for I/O completion and detach signal
 	done := make(chan error, 1)
 	detach := make(chan struct{})
@@ -99,8 +106,12 @@ func (m *Manager) Attach() (AttachResult, error) {
 	// Wait for detach or error
 	select {
 	case <-detach:
+		// Give a moment for terminal to settle after detach
+		time.Sleep(50 * time.Millisecond)
 		return AttachDetached, nil
 	case err := <-done:
+		// Give a moment for terminal to settle after exit
+		time.Sleep(50 * time.Millisecond)
 		if err != nil && err != io.EOF {
 			return AttachExited, err
 		}
