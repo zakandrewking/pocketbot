@@ -2,7 +2,6 @@ package session
 
 import (
 	"os"
-	"os/exec"
 	"path/filepath"
 	"testing"
 	"time"
@@ -27,9 +26,7 @@ done
 	}
 
 	// Create a manager with mock command
-	m := &Manager{}
-	m.cmd = exec.Command(mockScript)
-	m.cmd.Dir, _ = os.Getwd()
+	m := NewWithCommand(mockScript)
 
 	// Start the mock session
 	if err := m.Start(); err != nil {
@@ -75,9 +72,7 @@ sleep 10
 		t.Fatalf("Failed to create mock script: %v", err)
 	}
 
-	m := &Manager{}
-	m.cmd = exec.Command(mockScript)
-	m.cmd.Dir, _ = os.Getwd()
+	m := NewWithCommand(mockScript)
 
 	if err := m.Start(); err != nil {
 		t.Fatalf("Failed to start session: %v", err)

@@ -13,6 +13,7 @@ import (
 
 // Manager handles the Claude Code session lifecycle
 type Manager struct {
+	command         string        // Command to execute
 	cmd             *exec.Cmd
 	pty             *os.File
 	running         bool
@@ -20,9 +21,10 @@ type Manager struct {
 	activityMonitor *ActivityMonitor
 }
 
-// New creates a new session manager
+// New creates a new session manager for Claude
 func New() *Manager {
 	return &Manager{
+		command:         "claude --continue",
 		activityMonitor: NewActivityMonitor(5 * time.Second), // 5 second idle timeout
 	}
 }
@@ -36,8 +38,9 @@ func (m *Manager) Start() error {
 		return fmt.Errorf("session already running")
 	}
 
-	// Create the command
-	m.cmd = exec.Command("claude", "--continue")
+	// Create the command from the command string
+	// Use shell to properly parse the command
+	m.cmd = exec.Command("sh", "-c", m.command)
 	m.cmd.Dir, _ = os.Getwd()
 
 	// Start the command with a pty
