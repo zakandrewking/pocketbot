@@ -71,26 +71,26 @@ func contains(s, substr string) bool {
 	return len(s) >= len(substr) && (s == substr || len(s) > len(substr) && (s[:len(substr)] == substr || contains(s[1:], substr)))
 }
 
-func TestStateTransitionToAttached(t *testing.T) {
+func TestPressCSetsAttachFlag(t *testing.T) {
 	m := initialModel()
 
-	// Verify we start in home view
-	if m.viewState != viewHome {
-		t.Errorf("Expected viewHome, got %v", m.viewState)
+	// Verify we start with shouldAttach=false
+	if m.shouldAttach {
+		t.Error("shouldAttach should be false initially")
 	}
 
-	// Press 'c' to start/attach to Claude
+	// Press 'c' to request attach
 	msg := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'c'}}
-	updatedModel, _ := m.Update(msg)
+	updatedModel, cmd := m.Update(msg)
 
 	m, ok := updatedModel.(model)
 	if !ok {
 		t.Fatal("Update should return a model")
 	}
 
-	// Verify we're now in attached view
-	if m.viewState != viewAttached {
-		t.Errorf("Expected viewAttached after pressing 'c', got %v", m.viewState)
+	// Verify shouldAttach flag is set
+	if !m.shouldAttach {
+		t.Error("shouldAttach should be true after pressing 'c'")
 	}
 
 	// Verify session was started
@@ -98,34 +98,9 @@ func TestStateTransitionToAttached(t *testing.T) {
 		t.Error("Session should be running after pressing 'c'")
 	}
 
-	// Cleanup
-	m.session.Stop()
-}
-
-func TestStateTransitionToDetached(t *testing.T) {
-	m := initialModel()
-
-	// Start session and attach
-	m.session.Start()
-	m.viewState = viewAttached
-
-	// Press Ctrl+P to detach
-	msg := tea.KeyMsg{Type: tea.KeyCtrlP}
-	updatedModel, _ := m.Update(msg)
-
-	m, ok := updatedModel.(model)
-	if !ok {
-		t.Fatal("Update should return a model")
-	}
-
-	// Verify we're back in home view
-	if m.viewState != viewHome {
-		t.Errorf("Expected viewHome after pressing Ctrl+P, got %v", m.viewState)
-	}
-
-	// Session should still be running
-	if !m.session.IsRunning() {
-		t.Error("Session should still be running after detach")
+	// Verify that quit command is returned (to exit Bubble Tea)
+	if cmd == nil {
+		t.Error("Expected quit command after pressing 'c'")
 	}
 
 	// Cleanup

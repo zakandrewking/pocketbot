@@ -16,9 +16,12 @@ const (
 	viewAttached
 )
 
+type attachMsg struct{}
+
 type model struct {
-	session   *session.Manager
-	viewState viewState
+	session      *session.Manager
+	viewState    viewState
+	shouldAttach bool
 }
 
 func initialModel() model {
@@ -51,28 +54,23 @@ func (m model) updateHome(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "ctrl+c", "q":
 		return m, tea.Quit
 	case "c":
-		// Start or attach to Claude session
+		// Start session if not running
 		if !m.session.IsRunning() {
 			if err := m.session.Start(); err != nil {
-				// For now, just ignore errors (we'll add better error handling later)
+				// For now, just ignore errors
 				return m, nil
 			}
 		}
-		// Switch to attached view
-		m.viewState = viewAttached
-		return m, nil
+		// Signal that we want to attach
+		m.shouldAttach = true
+		return m, tea.Quit // Exit Bubble Tea to attach
 	}
 	return m, nil
 }
 
 func (m model) updateAttached(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-	switch msg.String() {
-	case "ctrl+p":
-		// Detach from session and return to home
-		m.viewState = viewHome
-		return m, nil
-	}
-	// In Phase 3, we'll forward all other keys to Claude
+	// This view state is no longer used in Phase 3
+	// Attach happens outside of Bubble Tea
 	return m, nil
 }
 
@@ -135,9 +133,44 @@ func main() {
 		}
 	}()
 
-	p := tea.NewProgram(m)
-	if _, err := p.Run(); err != nil {
-		fmt.Printf("Error: %v", err)
-		os.Exit(1)
+	// Main loop: run UI, attach when requested, repeat
+	for {
+		m.shouldAttach = false
+		m.viewState = viewHome
+
+		// Run Bubble Tea UI
+		p := tea.NewProgram(m)
+		finalModel, err := p.Run()
+		if err != nil {
+			fmt.Printf("Error: %v\n", err)
+			os.Exit(1)
+		}
+
+		// Get the final model state
+		m = finalModel.(model)
+
+		// Check if we should attach
+		if !m.shouldAttach {
+			// User quit normally
+			break
+		}
+
+		// Attach to Claude session
+		result, err := m.session.Attach()
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Attach error: %v\n", err)
+			// Continue to show UI
+			continue
+		}
+
+		// Handle attach result
+		switch result {
+		case session.AttachDetached:
+			// User pressed Ctrl+P, return to home screen
+			continue
+		case session.AttachExited:
+			// Claude exited, return to home screen
+			continue
+		}
 	}
 }
