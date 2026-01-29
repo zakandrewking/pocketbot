@@ -93,9 +93,9 @@ func TestPressCSetsAttachFlag(t *testing.T) {
 		t.Error("shouldAttach should be true after pressing 'c'")
 	}
 
-	// Verify session was started
-	if !m.session.IsRunning() {
-		t.Error("Session should be running after pressing 'c'")
+	// Verify sessionToAttach is set (should be 'claude' by default config)
+	if m.sessionToAttach == "" {
+		t.Error("sessionToAttach should be set after pressing configured key")
 	}
 
 	// Verify that quit command is returned (to exit Bubble Tea)
@@ -104,7 +104,7 @@ func TestPressCSetsAttachFlag(t *testing.T) {
 	}
 
 	// Cleanup
-	m.session.Stop()
+	m.registry.StopAll()
 }
 
 func TestHomeViewShowsSessionStatus(t *testing.T) {
@@ -119,9 +119,9 @@ func TestHomeViewShowsSessionStatus(t *testing.T) {
 		t.Error("Should not show '● running' when session is not running")
 	}
 
-	// Start session
-	m.session.Start()
-	defer m.session.Stop()
+	// Start claude session (default config has 'claude' session)
+	m.registry.Start("claude")
+	defer m.registry.StopAll()
 
 	// View with running session
 	view = m.View()
@@ -130,7 +130,7 @@ func TestHomeViewShowsSessionStatus(t *testing.T) {
 	if !hasActiveOrIdle {
 		t.Error("Should show '● active' or '● idle' when session is running")
 	}
-	if !contains(view, "Claude:") {
-		t.Error("Should show 'Claude:' label")
+	if !contains(view, "claude:") {
+		t.Error("Should show 'claude:' label")
 	}
 }

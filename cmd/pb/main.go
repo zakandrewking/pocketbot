@@ -3,10 +3,12 @@ package main
 import (
 	"fmt"
 	"os"
+	"strings"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/zakandrewking/pocketbot/internal/config"
 	"github.com/zakandrewking/pocketbot/internal/session"
 )
 
@@ -27,14 +29,33 @@ func tickCmd() tea.Msg {
 }
 
 type model struct {
-	session      *session.Manager
-	viewState    viewState
-	shouldAttach bool
+	config           *config.Config
+	registry         *session.Registry
+	viewState        viewState
+	shouldAttach     bool
+	sessionToAttach  string // Name of session to attach to
 }
 
 func initialModel() model {
+	// Load configuration
+	cfg, err := config.Load()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error loading config: %v\n", err)
+		fmt.Fprintf(os.Stderr, "Using default configuration\n")
+		cfg = config.DefaultConfig()
+	}
+
+	// Create registry and populate with configured sessions
+	reg := session.NewRegistry()
+	for _, sess := range cfg.AllSessions() {
+		if err := reg.Create(sess.Name, sess.Command); err != nil {
+			fmt.Fprintf(os.Stderr, "Error creating session %q: %v\n", sess.Name, err)
+		}
+	}
+
 	return model{
-		session:   session.New(),
+		config:    cfg,
+		registry:  reg,
 		viewState: viewHome,
 	}
 }
@@ -61,21 +82,37 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m model) updateHome(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-	switch msg.String() {
+	key := msg.String()
+
+	switch key {
 	case "ctrl+c", "q":
 		return m, tea.Quit
-	case "c":
-		// Start session if not running
-		if !m.session.IsRunning() {
-			if err := m.session.Start(); err != nil {
-				// For now, just ignore errors
-				return m, nil
-			}
-		}
-		// Signal that we want to attach
-		m.shouldAttach = true
-		return m, tea.Quit // Exit Bubble Tea to attach
 	}
+
+	// Check if key matches any configured session
+	for _, sess := range m.config.AllSessions() {
+		if sess.Key == key {
+			// Start session if not running
+			manager, err := m.registry.Get(sess.Name)
+			if err != nil {
+				// Session not in registry, skip
+				continue
+			}
+
+			if !manager.IsRunning() {
+				if err := m.registry.Start(sess.Name); err != nil {
+					// Error starting session, skip
+					continue
+				}
+			}
+
+			// Signal that we want to attach to this session
+			m.shouldAttach = true
+			m.sessionToAttach = sess.Name
+			return m, tea.Quit // Exit Bubble Tea to attach
+		}
+	}
+
 	return m, nil
 }
 
@@ -119,31 +156,39 @@ func (m model) viewHome() string {
 
 	title := titleStyle.Render("🤖 Welcome to PocketBot!")
 
-	// Claude status line
-	var claudeStatus string
-	if m.session.IsRunning() {
-		activityState := m.session.GetActivityState()
-		var status string
-		if activityState == session.StateActive {
-			status = runningStyle.Render("● active (detached)")
-		} else {
-			status = runningStyle.Render("● idle (detached)")
+	// Build status lines for all sessions
+	var sb strings.Builder
+	for _, sess := range m.config.AllSessions() {
+		manager, err := m.registry.Get(sess.Name)
+		if err != nil {
+			continue
 		}
-		claudeStatus = fmt.Sprintf("%s %s", labelStyle.Render("Claude:"), status)
-	} else {
-		status := stoppedStyle.Render("○ not running")
-		claudeStatus = fmt.Sprintf("%s %s", labelStyle.Render("Claude:"), status)
+
+		var status string
+		if manager.IsRunning() {
+			activityState := manager.GetActivityState()
+			if activityState == session.StateActive {
+				status = runningStyle.Render("● active")
+			} else {
+				status = runningStyle.Render("● idle")
+			}
+		} else {
+			status = stoppedStyle.Render("○ not running")
+		}
+
+		// Format: name (key): status
+		keyStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#5555FF"))
+		line := fmt.Sprintf("%s %s %s\n",
+			labelStyle.Render(fmt.Sprintf("%s:", sess.Name)),
+			status,
+			keyStyle.Render(fmt.Sprintf("[%s]", sess.Key)))
+		sb.WriteString(line)
 	}
 
 	// Instructions
-	var instructions string
-	if m.session.IsRunning() {
-		instructions = instructionStyle.Render("Press 'c' to attach • Ctrl+C to quit")
-	} else {
-		instructions = instructionStyle.Render("Press 'c' to start Claude • Ctrl+C to quit")
-	}
+	instructions := instructionStyle.Render("Press key to start/attach • Ctrl+C to quit")
 
-	return fmt.Sprintf("\n%s\n\n%s\n\n%s\n\n", title, claudeStatus, instructions)
+	return fmt.Sprintf("\n%s\n\n%s\n%s\n", title, sb.String(), instructions)
 }
 
 func (m model) viewAttached() string {
@@ -162,14 +207,15 @@ func main() {
 
 	// Ensure session cleanup on exit
 	defer func() {
-		if err := m.session.Stop(); err != nil {
-			fmt.Fprintf(os.Stderr, "Error stopping session: %v\n", err)
+		if err := m.registry.StopAll(); err != nil {
+			fmt.Fprintf(os.Stderr, "Error stopping sessions: %v\n", err)
 		}
 	}()
 
 	// Main loop: run UI, attach when requested, repeat
 	for {
 		m.shouldAttach = false
+		m.sessionToAttach = ""
 		m.viewState = viewHome
 
 		// Run Bubble Tea UI with alternate screen buffer
@@ -184,14 +230,14 @@ func main() {
 		m = finalModel.(model)
 
 		// Check if we should attach
-		if !m.shouldAttach {
+		if !m.shouldAttach || m.sessionToAttach == "" {
 			// User quit normally
 			break
 		}
 
-		// Attach to Claude session
+		// Attach to requested session
 		// Note: No screen clearing needed - alternate screen handles separation
-		result, err := m.session.Attach()
+		result, err := m.registry.Attach(m.sessionToAttach)
 
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Attach error: %v\n", err)
@@ -205,7 +251,7 @@ func main() {
 			// User pressed Ctrl+D, return to home screen
 			continue
 		case session.AttachExited:
-			// Claude exited, return to home screen
+			// Session exited, return to home screen
 			continue
 		}
 	}
