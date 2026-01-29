@@ -6,12 +6,17 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/zakandrewking/pocketbot/internal/session"
 )
 
-type model struct{}
+type model struct {
+	session *session.Manager
+}
 
 func initialModel() model {
-	return model{}
+	return model{
+		session: session.New(),
+	}
 }
 
 func (m model) Init() tea.Cmd {
@@ -46,7 +51,16 @@ func (m model) View() string {
 }
 
 func main() {
-	p := tea.NewProgram(initialModel())
+	m := initialModel()
+
+	// Ensure session cleanup on exit
+	defer func() {
+		if err := m.session.Stop(); err != nil {
+			fmt.Fprintf(os.Stderr, "Error stopping session: %v\n", err)
+		}
+	}()
+
+	p := tea.NewProgram(m)
 	if _, err := p.Run(); err != nil {
 		fmt.Printf("Error: %v", err)
 		os.Exit(1)
