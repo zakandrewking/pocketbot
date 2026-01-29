@@ -5,19 +5,13 @@ import (
 	"os"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 )
 
-type model struct {
-	choices  []string
-	cursor   int
-	selected map[int]struct{}
-}
+type model struct{}
 
 func initialModel() model {
-	return model{
-		choices:  []string{"Start", "Settings", "Exit"},
-		selected: make(map[int]struct{}),
-	}
+	return model{}
 }
 
 func (m model) Init() tea.Cmd {
@@ -28,47 +22,27 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
 		switch msg.String() {
-		case "ctrl+c", "q":
+		case "ctrl+c":
 			return m, tea.Quit
-		case "up", "k":
-			if m.cursor > 0 {
-				m.cursor--
-			}
-		case "down", "j":
-			if m.cursor < len(m.choices)-1 {
-				m.cursor++
-			}
-		case "enter", " ":
-			_, ok := m.selected[m.cursor]
-			if ok {
-				delete(m.selected, m.cursor)
-			} else {
-				m.selected[m.cursor] = struct{}{}
-			}
 		}
 	}
 	return m, nil
 }
 
 func (m model) View() string {
-	s := "PocketBot\n\n"
+	titleStyle := lipgloss.NewStyle().
+		Bold(true).
+		Foreground(lipgloss.Color("#7D56F4")).
+		MarginTop(1).
+		MarginBottom(1)
 
-	for i, choice := range m.choices {
-		cursor := " "
-		if m.cursor == i {
-			cursor = ">"
-		}
+	subtitleStyle := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("#04B575"))
 
-		checked := " "
-		if _, ok := m.selected[i]; ok {
-			checked = "x"
-		}
+	title := titleStyle.Render("🤖 Welcome to PocketBot!")
+	subtitle := subtitleStyle.Render("Press Ctrl+C to quit.")
 
-		s += fmt.Sprintf("%s [%s] %s\n", cursor, checked, choice)
-	}
-
-	s += "\nPress q to quit.\n"
-	return s
+	return fmt.Sprintf("\n%s\n\n%s\n\n", title, subtitle)
 }
 
 func main() {

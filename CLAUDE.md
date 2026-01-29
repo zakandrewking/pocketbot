@@ -33,3 +33,8 @@ go install ./cmd/pb
 
 - `cmd/pb/` - Main CLI application entry point
 - `go.mod` - Go module definition
+
+## Workflow
+
+- It's OK to push straight to main if changes are tested
+- Always commit & push working improvements
