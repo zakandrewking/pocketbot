@@ -6,21 +6,25 @@ import (
 	"os"
 	"os/exec"
 	"sync"
+	"time"
 
 	"github.com/creack/pty"
 )
 
 // Manager handles the Claude Code session lifecycle
 type Manager struct {
-	cmd     *exec.Cmd
-	pty     *os.File
-	running bool
-	mu      sync.Mutex
+	cmd             *exec.Cmd
+	pty             *os.File
+	running         bool
+	mu              sync.Mutex
+	activityMonitor *ActivityMonitor
 }
 
 // New creates a new session manager
 func New() *Manager {
-	return &Manager{}
+	return &Manager{
+		activityMonitor: NewActivityMonitor(5 * time.Second), // 5 second idle timeout
+	}
 }
 
 // Start launches a Claude Code session in a PTY
@@ -116,4 +120,15 @@ func (m *Manager) Write(p []byte) (n int, err error) {
 func (m *Manager) Copy(dst io.Writer, src io.Reader) error {
 	_, err := io.Copy(dst, src)
 	return err
+}
+
+// GetActivityState returns the current activity state of the session
+func (m *Manager) GetActivityState() ActivityState {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	if !m.running || m.activityMonitor == nil {
+		return StateIdle
+	}
+	return m.activityMonitor.GetState()
 }

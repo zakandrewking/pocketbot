@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"os"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
@@ -18,6 +19,13 @@ const (
 
 type attachMsg struct{}
 
+type tickMsg time.Time
+
+func tickCmd() tea.Msg {
+	time.Sleep(1 * time.Second)
+	return tickMsg(time.Now())
+}
+
 type model struct {
 	session      *session.Manager
 	viewState    viewState
@@ -32,7 +40,7 @@ func initialModel() model {
 }
 
 func (m model) Init() tea.Cmd {
-	return nil
+	return tickCmd
 }
 
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -45,6 +53,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case viewAttached:
 			return m.updateAttached(msg)
 		}
+	case tickMsg:
+		// Periodic update to refresh activity status
+		return m, tickCmd
 	}
 	return m, nil
 }
@@ -111,7 +122,13 @@ func (m model) viewHome() string {
 	// Claude status line
 	var claudeStatus string
 	if m.session.IsRunning() {
-		status := runningStyle.Render("● running (detached)")
+		activityState := m.session.GetActivityState()
+		var status string
+		if activityState == session.StateActive {
+			status = runningStyle.Render("● active (detached)")
+		} else {
+			status = runningStyle.Render("● idle (detached)")
+		}
 		claudeStatus = fmt.Sprintf("%s %s", labelStyle.Render("Claude:"), status)
 	} else {
 		status := stoppedStyle.Render("○ not running")

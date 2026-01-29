@@ -125,8 +125,10 @@ func TestHomeViewShowsSessionStatus(t *testing.T) {
 
 	// View with running session
 	view = m.View()
-	if !contains(view, "● running") {
-		t.Error("Should show '● running' when session is running")
+	// Should show either "● active" or "● idle"
+	hasActiveOrIdle := contains(view, "● active") || contains(view, "● idle")
+	if !hasActiveOrIdle {
+		t.Error("Should show '● active' or '● idle' when session is running")
 	}
 	if !contains(view, "Claude:") {
 		t.Error("Should show 'Claude:' label")

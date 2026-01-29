@@ -66,10 +66,23 @@ func (m *Manager) Attach() (AttachResult, error) {
 	done := make(chan error, 1)
 	detach := make(chan struct{})
 
-	// Copy output from pty to stdout
+	// Copy output from pty to stdout, recording activity
 	go func() {
-		_, err := io.Copy(os.Stdout, ptmx)
-		done <- err
+		buf := make([]byte, 4096)
+		for {
+			n, err := ptmx.Read(buf)
+			if err != nil {
+				done <- err
+				return
+			}
+			if n > 0 {
+				m.activityMonitor.RecordActivity()
+				if _, err := os.Stdout.Write(buf[:n]); err != nil {
+					done <- err
+					return
+				}
+			}
+		}
 	}()
 
 	// Copy input from stdin to pty, intercepting Ctrl+D
@@ -93,8 +106,9 @@ func (m *Manager) Attach() (AttachResult, error) {
 				filtered = append(filtered, buf[i])
 			}
 
-			// Write filtered input to pty
+			// Write filtered input to pty and record activity
 			if len(filtered) > 0 {
+				m.activityMonitor.RecordActivity()
 				if _, err := ptmx.Write(filtered); err != nil {
 					done <- err
 					return
