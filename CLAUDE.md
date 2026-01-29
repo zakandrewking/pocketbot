@@ -38,3 +38,5 @@ go install ./cmd/pb
 
 - It's OK to push straight to main if changes are tested
 - Always commit & push working improvements
+- Always work in small testable steps (unit tests, integration tests, or manual testing)
+- For larger work, create a markdown project plan before beginning
