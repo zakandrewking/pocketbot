@@ -1,0 +1,30 @@
+# PocketBot Configuration Example
+# Copy to ~/.config/pocketbot/config.yaml
+
+# Claude session (default)
+claude:
+  command: "claude --continue"
+  key: "c"
+  enabled: true
+
+# Custom sessions
+sessions:
+  # Development server
+  - name: "dev-server"
+    command: "npm run dev"
+    key: "d"
+
+  # API server
+  - name: "api"
+    command: "go run cmd/api/main.go"
+    key: "a"
+
+  # Watch logs
+  - name: "logs"
+    command: "tail -f logs/app.log"
+    key: "l"
+
+  # Database shell
+  - name: "db"
+    command: "psql mydb"
+    key: "b"

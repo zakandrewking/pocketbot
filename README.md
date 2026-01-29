@@ -1,6 +1,14 @@
 # PocketBot
 
-A terminal UI (TUI) tool built with Go and Bubble Tea.
+A lightweight session manager for terminal workflows. Manage Claude Code and custom dev tools with simple keybindings.
+
+## Features
+
+- **Claude Code Integration**: Quick access to Claude Code sessions with `c`
+- **Custom Sessions**: Configure any command (dev servers, logs, etc.) with custom keybindings
+- **Activity Monitoring**: See if sessions are active or idle in real-time
+- **Detach/Attach**: Like tmux, but simpler - press Ctrl+D to detach, press key to reattach
+- **YAML Configuration**: Simple config file for all your workflows
 
 ## Installation
 
@@ -8,16 +16,51 @@ A terminal UI (TUI) tool built with Go and Bubble Tea.
 go install github.com/zakandrewking/pocketbot/cmd/pb@latest
 ```
 
-## Usage
+## Quick Start
 
 ```bash
 pb
 ```
 
-Navigate the menu with:
-- Arrow keys or `j`/`k` (vim-style)
-- Select items with Enter or Space
-- Quit with `q` or Ctrl+C
+**Default Usage:**
+- Press `c` to start/attach to Claude Code
+- While attached, press Ctrl+D to detach (returns to pocketbot)
+- Press Ctrl+C to quit pocketbot
+
+## Configuration
+
+Create `~/.config/pocketbot/config.yaml` to customize sessions:
+
+```yaml
+# Claude (default, can be disabled)
+claude:
+  command: "claude --continue"
+  key: "c"
+  enabled: true
+
+# Add custom sessions
+sessions:
+  - name: "dev-server"
+    command: "npm run dev"
+    key: "d"
+
+  - name: "logs"
+    command: "tail -f logs/app.log"
+    key: "l"
+```
+
+See [config.example.yaml](config.example.yaml) for more examples.
+
+**Session Display:**
+```
+🤖 Welcome to PocketBot!
+
+claude: ● active [c]
+dev-server: ○ not running [d]
+logs: ● idle [l]
+
+Press key to start/attach • Ctrl+C to quit
+```
 
 ## Development
 
