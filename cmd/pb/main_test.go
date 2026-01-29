@@ -70,3 +70,84 @@ func TestViewRendersWelcomeMessage(t *testing.T) {
 func contains(s, substr string) bool {
 	return len(s) >= len(substr) && (s == substr || len(s) > len(substr) && (s[:len(substr)] == substr || contains(s[1:], substr)))
 }
+
+func TestStateTransitionToAttached(t *testing.T) {
+	m := initialModel()
+
+	// Verify we start in home view
+	if m.viewState != viewHome {
+		t.Errorf("Expected viewHome, got %v", m.viewState)
+	}
+
+	// Press 'c' to start/attach to Claude
+	msg := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'c'}}
+	updatedModel, _ := m.Update(msg)
+
+	m, ok := updatedModel.(model)
+	if !ok {
+		t.Fatal("Update should return a model")
+	}
+
+	// Verify we're now in attached view
+	if m.viewState != viewAttached {
+		t.Errorf("Expected viewAttached after pressing 'c', got %v", m.viewState)
+	}
+
+	// Verify session was started
+	if !m.session.IsRunning() {
+		t.Error("Session should be running after pressing 'c'")
+	}
+
+	// Cleanup
+	m.session.Stop()
+}
+
+func TestStateTransitionToDetached(t *testing.T) {
+	m := initialModel()
+
+	// Start session and attach
+	m.session.Start()
+	m.viewState = viewAttached
+
+	// Press Ctrl+P to detach
+	msg := tea.KeyMsg{Type: tea.KeyCtrlP}
+	updatedModel, _ := m.Update(msg)
+
+	m, ok := updatedModel.(model)
+	if !ok {
+		t.Fatal("Update should return a model")
+	}
+
+	// Verify we're back in home view
+	if m.viewState != viewHome {
+		t.Errorf("Expected viewHome after pressing Ctrl+P, got %v", m.viewState)
+	}
+
+	// Session should still be running
+	if !m.session.IsRunning() {
+		t.Error("Session should still be running after detach")
+	}
+
+	// Cleanup
+	m.session.Stop()
+}
+
+func TestHomeViewShowsSessionStatus(t *testing.T) {
+	m := initialModel()
+
+	// View without running session
+	view := m.View()
+	if contains(view, "Claude is running") {
+		t.Error("Should not show 'Claude is running' when session is not running")
+	}
+
+	// Start session
+	m.session.Start()
+	defer m.session.Stop()
+
+	// View with running session
+	view = m.View()
+	if !contains(view, "Claude is running") {
+		t.Error("Should show 'Claude is running' when session is running")
+	}
+}
