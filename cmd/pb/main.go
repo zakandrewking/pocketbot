@@ -269,6 +269,9 @@ func main() {
 			continue
 		}
 
+		// Give the session a moment to fully initialize
+		time.Sleep(500 * time.Millisecond)
+
 		// tmux attach - returns when user detaches (prefix+d)
 		if err := tmuxSess.Attach(); err != nil {
 			fmt.Fprintf(os.Stderr, "Attach error: %v\n", err)
@@ -292,6 +295,9 @@ func handleSubcommand(cmd string) {
 		runCommand("go", "install", "./cmd/pb")
 	case "run":
 		runCommand("go", "run", "./cmd/pb")
+	case "demo":
+		// Run a simple demo session for testing
+		runDemoSession()
 	case "sessions":
 		// Show sessions for current nesting level
 		socket := "pocketbot"
@@ -325,6 +331,28 @@ func runCommand(name string, args ...string) {
 	}
 }
 
+func runDemoSession() {
+	fmt.Println("Creating demo session...")
+
+	// Create a simple test session
+	if err := tmux.CreateSession("demo", "echo 'Demo session started'; echo 'Press Ctrl+D to detach'; sleep 30; echo 'Demo session ending...'"); err != nil {
+		fmt.Fprintf(os.Stderr, "Error creating demo session: %v\n", err)
+		os.Exit(1)
+	}
+
+	fmt.Println("Demo session created. Attaching...")
+
+	// Attach to it
+	if err := tmux.AttachSession("demo"); err != nil {
+		fmt.Fprintf(os.Stderr, "Error attaching: %v\n", err)
+		os.Exit(1)
+	}
+
+	// Clean up
+	fmt.Println("\nCleaning up demo session...")
+	tmux.KillSession("demo")
+}
+
 func printHelp() {
 	fmt.Println(`pocketbot - Mobile-friendly tmux session manager
 
@@ -334,6 +362,7 @@ Usage:
   pb build        Build binary
   pb install      Install to $GOPATH/bin
   pb run          Run development version
+  pb demo         Run a simple demo session (for testing)
   pb sessions     List active tmux sessions
   pb kill-all     Kill all sessions
   pb help         Show this help
