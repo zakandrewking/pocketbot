@@ -44,7 +44,6 @@ func TestInvalidClaudeFlagCausesExit(t *testing.T) {
 	sessionName := "test-invalid-flag"
 	tmux.KillSession(sessionName)
 	defer tmux.KillSession(sessionName)
-	defer tmux.KillServer()
 
 	// Test with INVALID flag (the bug)
 	// We use a wrapper that captures the error and keeps session alive
@@ -80,7 +79,6 @@ func TestValidClaudeFlagWorks(t *testing.T) {
 	sessionName := "test-valid-flag"
 	tmux.KillSession(sessionName)
 	defer tmux.KillSession(sessionName)
-	defer tmux.KillServer()
 
 	// Test with VALID flag (the fix) - just check it starts without error
 	validCmd := "claude --permission-mode acceptEdits --help 2>&1 | head -3; sleep 2"

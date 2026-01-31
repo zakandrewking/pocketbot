@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 )
@@ -50,12 +51,21 @@ func SessionExists(name string) bool {
 
 // CreateSession creates a new detached tmux session running the given command
 func CreateSession(name, command string) error {
-	// Set PB_LEVEL environment variable for nested pb instances
-	nextLevel := getNestingLevel() + 1
-	envCmd := fmt.Sprintf("export PB_LEVEL=%d; %s", nextLevel, command)
+	// Get current working directory to store with session
+	cwd, _ := os.Getwd()
 
-	if err := cmd("new-session", "-d", "-s", name, "sh", "-c", envCmd).Run(); err != nil {
+	// Set PB_LEVEL environment variable for nested pb instances
+	// Also set PB_CWD to track where session was launched from
+	nextLevel := getNestingLevel() + 1
+	envCmd := fmt.Sprintf("export PB_LEVEL=%d; export PB_CWD='%s'; %s", nextLevel, cwd, command)
+
+	if err := cmd("new-session", "-d", "-s", name, "-c", cwd, "sh", "-c", envCmd).Run(); err != nil {
 		return err
+	}
+
+	// Store the launch directory as a tmux session option (for easy querying)
+	if err := cmd("set-option", "-t", name, "@pb_cwd", cwd).Run(); err != nil {
+		// Non-fatal - just means we can't check directory later
 	}
 
 	// Hide status bar to save screen space
@@ -113,6 +123,28 @@ func CapturePane(sessionName string) (string, error) {
 		return "", err
 	}
 	return string(out), nil
+}
+
+// GetSessionCwd returns the working directory where a session was launched
+func GetSessionCwd(sessionName string) string {
+	out, err := cmd("show-options", "-t", sessionName, "-v", "@pb_cwd").Output()
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(out))
+}
+
+// ListSessions returns all active session names
+func ListSessions() []string {
+	out, err := cmd("list-sessions", "-F", "#{session_name}").Output()
+	if err != nil {
+		return nil
+	}
+	lines := strings.Split(strings.TrimSpace(string(out)), "\n")
+	if len(lines) == 1 && lines[0] == "" {
+		return nil
+	}
+	return lines
 }
 
 // Session represents a tmux-backed session

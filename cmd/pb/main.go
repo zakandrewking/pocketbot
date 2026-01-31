@@ -43,6 +43,9 @@ func initialModel() model {
 		os.Exit(1)
 	}
 
+	// Check for directory mismatches with existing sessions
+	checkDirectoryMismatch()
+
 	// Load configuration
 	cfg, err := config.Load()
 	if err != nil {
@@ -61,6 +64,35 @@ func initialModel() model {
 		config:    cfg,
 		sessions:  sessions,
 		viewState: viewHome,
+	}
+}
+
+func checkDirectoryMismatch() {
+	cwd, err := os.Getwd()
+	if err != nil {
+		return
+	}
+
+	existingSessions := tmux.ListSessions()
+	if len(existingSessions) == 0 {
+		return
+	}
+
+	var mismatches []string
+	for _, name := range existingSessions {
+		sessionCwd := tmux.GetSessionCwd(name)
+		if sessionCwd != "" && sessionCwd != cwd {
+			mismatches = append(mismatches, fmt.Sprintf("  - %s (from %s)", name, sessionCwd))
+		}
+	}
+
+	if len(mismatches) > 0 {
+		fmt.Fprintf(os.Stderr, "\n⚠️  Warning: Sessions running from different directory:\n")
+		for _, m := range mismatches {
+			fmt.Fprintf(os.Stderr, "%s\n", m)
+		}
+		fmt.Fprintf(os.Stderr, "\nCurrent directory: %s\n", cwd)
+		fmt.Fprintf(os.Stderr, "Use 'pb kill-all' to stop existing sessions, or Ctrl+C to exit.\n\n")
 	}
 }
 
