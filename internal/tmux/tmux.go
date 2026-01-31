@@ -106,6 +106,15 @@ func KillServer() error {
 	return cmd("kill-server").Run()
 }
 
+// CapturePane captures the content of a pane (for testing)
+func CapturePane(sessionName string) (string, error) {
+	out, err := cmd("capture-pane", "-t", sessionName, "-p").Output()
+	if err != nil {
+		return "", err
+	}
+	return string(out), nil
+}
+
 // Session represents a tmux-backed session
 type Session struct {
 	name         string
