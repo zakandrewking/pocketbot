@@ -103,8 +103,10 @@ func TestPressCSetsAttachFlag(t *testing.T) {
 		t.Error("Expected quit command after pressing 'c'")
 	}
 
-	// Cleanup
-	m.registry.StopAll()
+	// Cleanup: stop any started tmux sessions
+	for _, sess := range m.sessions {
+		sess.Stop()
+	}
 }
 
 func TestHomeViewShowsSessionStatus(t *testing.T) {
@@ -120,15 +122,23 @@ func TestHomeViewShowsSessionStatus(t *testing.T) {
 	}
 
 	// Start claude session (default config has 'claude' session)
-	m.registry.Start("claude")
-	defer m.registry.StopAll()
+	claudeSess, exists := m.sessions["claude"]
+	if !exists {
+		t.Fatal("Expected 'claude' session in default config")
+	}
+	if err := claudeSess.Start(); err != nil {
+		t.Fatalf("Failed to start claude session: %v", err)
+	}
+	defer func() {
+		for _, sess := range m.sessions {
+			sess.Stop()
+		}
+	}()
 
 	// View with running session
 	view = m.View()
-	// Should show either "● active" or "● idle"
-	hasActiveOrIdle := contains(view, "● active") || contains(view, "● idle")
-	if !hasActiveOrIdle {
-		t.Error("Should show '● active' or '● idle' when session is running")
+	if !contains(view, "● running") {
+		t.Error("Should show '● running' when session is running")
 	}
 	if !contains(view, "claude:") {
 		t.Error("Should show 'claude:' label")

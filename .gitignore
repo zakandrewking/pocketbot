@@ -27,3 +27,4 @@ vendor/
 *.swo
 *~
 .DS_Store
+tmp/

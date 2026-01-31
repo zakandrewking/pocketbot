@@ -9,7 +9,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/zakandrewking/pocketbot/internal/config"
-	"github.com/zakandrewking/pocketbot/internal/session"
+	"github.com/zakandrewking/pocketbot/internal/tmux"
 )
 
 type viewState int
@@ -29,14 +29,21 @@ func tickCmd() tea.Msg {
 }
 
 type model struct {
-	config           *config.Config
-	registry         *session.Registry
-	viewState        viewState
-	shouldAttach     bool
-	sessionToAttach  string // Name of session to attach to
+	config          *config.Config
+	sessions        map[string]*tmux.Session
+	viewState       viewState
+	shouldAttach    bool
+	sessionToAttach string // Name of session to attach to
 }
 
 func initialModel() model {
+	// Check for tmux
+	if !tmux.Available() {
+		fmt.Fprintf(os.Stderr, "Error: tmux is required but not found in PATH\n")
+		fmt.Fprintf(os.Stderr, "Install with: brew install tmux\n")
+		os.Exit(1)
+	}
+
 	// Load configuration
 	cfg, err := config.Load()
 	if err != nil {
@@ -45,17 +52,15 @@ func initialModel() model {
 		cfg = config.DefaultConfig()
 	}
 
-	// Create registry and populate with configured sessions
-	reg := session.NewRegistry()
+	// Create tmux sessions for each configured session
+	sessions := make(map[string]*tmux.Session)
 	for _, sess := range cfg.AllSessions() {
-		if err := reg.Create(sess.Name, sess.Command); err != nil {
-			fmt.Fprintf(os.Stderr, "Error creating session %q: %v\n", sess.Name, err)
-		}
+		sessions[sess.Name] = tmux.NewSession(sess.Name, sess.Command)
 	}
 
 	return model{
 		config:    cfg,
-		registry:  reg,
+		sessions:  sessions,
 		viewState: viewHome,
 	}
 }
@@ -87,20 +92,24 @@ func (m model) updateHome(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch key {
 	case "ctrl+c", "q":
 		return m, tea.Quit
+	case "x":
+		// Kill all tmux sessions and exit
+		tmux.KillServer()
+		return m, tea.Quit
 	}
 
 	// Check if key matches any configured session
 	for _, sess := range m.config.AllSessions() {
 		if sess.Key == key {
-			// Start session if not running
-			manager, err := m.registry.Get(sess.Name)
-			if err != nil {
-				// Session not in registry, skip
+			// Get tmux session
+			tmuxSess, exists := m.sessions[sess.Name]
+			if !exists {
 				continue
 			}
 
-			if !manager.IsRunning() {
-				if err := m.registry.Start(sess.Name); err != nil {
+			// Start session if not running
+			if !tmuxSess.IsRunning() {
+				if err := tmuxSess.Start(); err != nil {
 					// Error starting session, skip
 					continue
 				}
@@ -159,19 +168,14 @@ func (m model) viewHome() string {
 	// Build status lines for all sessions
 	var sb strings.Builder
 	for _, sess := range m.config.AllSessions() {
-		manager, err := m.registry.Get(sess.Name)
-		if err != nil {
+		tmuxSess, exists := m.sessions[sess.Name]
+		if !exists {
 			continue
 		}
 
 		var status string
-		if manager.IsRunning() {
-			activityState := manager.GetActivityState()
-			if activityState == session.StateActive {
-				status = runningStyle.Render("● active")
-			} else {
-				status = runningStyle.Render("● idle")
-			}
+		if tmuxSess.IsRunning() {
+			status = runningStyle.Render("● running")
 		} else {
 			status = stoppedStyle.Render("○ not running")
 		}
@@ -186,7 +190,7 @@ func (m model) viewHome() string {
 	}
 
 	// Instructions
-	instructions := instructionStyle.Render("Press key to start/attach • Ctrl+C to quit")
+	instructions := instructionStyle.Render("Press key to start/attach • x to kill all • Ctrl+C to quit")
 
 	return fmt.Sprintf("\n%s\n\n%s\n%s\n", title, sb.String(), instructions)
 }
@@ -205,12 +209,8 @@ func (m model) viewAttached() string {
 func main() {
 	m := initialModel()
 
-	// Ensure session cleanup on exit
-	defer func() {
-		if err := m.registry.StopAll(); err != nil {
-			fmt.Fprintf(os.Stderr, "Error stopping sessions: %v\n", err)
-		}
-	}()
+	// Note: We don't kill tmux sessions on exit - they persist in background
+	// User can manually kill with: tmux -L pocketbot kill-server
 
 	// Main loop: run UI, attach when requested, repeat
 	for {
@@ -235,24 +235,18 @@ func main() {
 			break
 		}
 
-		// Attach to requested session
-		// Note: No screen clearing needed - alternate screen handles separation
-		result, err := m.registry.Attach(m.sessionToAttach)
+		// Attach to requested tmux session
+		tmuxSess, exists := m.sessions[m.sessionToAttach]
+		if !exists {
+			fmt.Fprintf(os.Stderr, "Session %q not found\n", m.sessionToAttach)
+			continue
+		}
 
-		if err != nil {
+		// tmux attach - returns when user detaches (prefix+d)
+		if err := tmuxSess.Attach(); err != nil {
 			fmt.Fprintf(os.Stderr, "Attach error: %v\n", err)
-			// Continue to show UI
-			continue
 		}
 
-		// Handle attach result
-		switch result {
-		case session.AttachDetached:
-			// User pressed Ctrl+D, return to home screen
-			continue
-		case session.AttachExited:
-			// Session exited, return to home screen
-			continue
-		}
+		// Always return to home screen after detach
 	}
 }

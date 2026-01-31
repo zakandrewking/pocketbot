@@ -40,3 +40,4 @@ go install ./cmd/pb
 - Always commit & push working improvements
 - Always work in small testable steps (unit tests, integration tests, or manual testing)
 - For larger work, create a markdown project plan before beginning
+- Track bugs in a committed markdown file (BUGS.md)
