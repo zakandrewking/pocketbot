@@ -19,8 +19,6 @@ const (
 	viewAttached
 )
 
-type attachMsg struct{}
-
 type tickMsg time.Time
 
 func tickCmd() tea.Msg {
@@ -90,11 +88,12 @@ func (m model) updateHome(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	key := msg.String()
 
 	switch key {
-	case "ctrl+c", "q":
-		return m, tea.Quit
-	case "x":
+	case "ctrl+c":
 		// Kill all tmux sessions and exit
 		tmux.KillServer()
+		return m, tea.Quit
+	case "q":
+		// Quit without killing sessions
 		return m, tea.Quit
 	}
 
@@ -125,8 +124,8 @@ func (m model) updateHome(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-func (m model) updateAttached(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-	// This view state is no longer used in Phase 3
+func (m model) updateAttached(_ tea.KeyMsg) (tea.Model, tea.Cmd) {
+	// This view state is no longer used
 	// Attach happens outside of Bubble Tea
 	return m, nil
 }
@@ -190,7 +189,7 @@ func (m model) viewHome() string {
 	}
 
 	// Instructions
-	instructions := instructionStyle.Render("Press key to start/attach • x to kill all • Ctrl+C to quit")
+	instructions := instructionStyle.Render("Ctrl+C to kill all & quit • q to quit")
 
 	return fmt.Sprintf("\n%s\n\n%s\n%s\n", title, sb.String(), instructions)
 }
