@@ -269,8 +269,8 @@ func main() {
 			continue
 		}
 
-		// Give the session a moment to fully initialize
-		time.Sleep(500 * time.Millisecond)
+		// Note: No delay needed. The original bug was an invalid claude flag,
+		// not a race condition. See TestClaudeCommandFlag for regression test.
 
 		// tmux attach - returns when user detaches (prefix+d)
 		if err := tmuxSess.Attach(); err != nil {

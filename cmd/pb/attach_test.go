@@ -1,94 +1,103 @@
 package main
 
 import (
-	"fmt"
+	"os/exec"
+	"strings"
 	"testing"
 	"time"
 
+	"github.com/zakandrewking/pocketbot/internal/config"
 	"github.com/zakandrewking/pocketbot/internal/tmux"
 )
 
-func TestAttachAfterCreate(t *testing.T) {
+// TestClaudeCommandFlag verifies the claude command uses valid flags.
+// This is a regression test for the bug where --accept-edits (invalid)
+// was used instead of --permission-mode acceptEdits (valid).
+func TestClaudeCommandFlag(t *testing.T) {
+	cfg := config.DefaultConfig()
+
+	// The command should use --permission-mode, NOT --accept-edits
+	if strings.Contains(cfg.Claude.Command, "--accept-edits") {
+		t.Errorf("Claude command uses invalid --accept-edits flag: %s", cfg.Claude.Command)
+		t.Log("This causes claude to exit immediately with 'unknown option' error")
+	}
+
+	if !strings.Contains(cfg.Claude.Command, "--permission-mode") {
+		t.Errorf("Claude command should use --permission-mode flag: %s", cfg.Claude.Command)
+	}
+
+	t.Logf("✓ Claude command is valid: %s", cfg.Claude.Command)
+}
+
+// TestInvalidClaudeFlagCausesExit demonstrates what happens with the bug.
+// This test proves the bug by showing claude exits with invalid flag.
+func TestInvalidClaudeFlagCausesExit(t *testing.T) {
 	if !tmux.Available() {
 		t.Skip("tmux not available")
 	}
 
-	sessionName := "test-attach-race"
+	// Check if claude is available
+	if _, err := exec.LookPath("claude"); err != nil {
+		t.Skip("claude not available")
+	}
 
-	// Clean up any existing session
+	sessionName := "test-invalid-flag"
 	tmux.KillSession(sessionName)
 	defer tmux.KillSession(sessionName)
+	defer tmux.KillServer()
 
-	// Create a session with a simple command that stays alive
-	command := "echo 'Test session started'; sleep 30"
-	if err := tmux.CreateSession(sessionName, command); err != nil {
+	// Test with INVALID flag (the bug)
+	// We use a wrapper that captures the error and keeps session alive
+	invalidCmd := "claude --accept-edits 2>&1 | head -1; sleep 2"
+	if err := tmux.CreateSession(sessionName, invalidCmd); err != nil {
 		t.Fatalf("Failed to create session: %v", err)
 	}
 
-	// Verify session exists
-	if !tmux.SessionExists(sessionName) {
-		t.Fatal("Session should exist after creation")
-	}
-
-	// Wait for session to initialize (mimics what main.go does)
 	time.Sleep(500 * time.Millisecond)
-
-	// Verify we can check if it's running
-	// (In the real bug, this would pass but attach would fail)
-	if !tmux.SessionExists(sessionName) {
-		t.Fatal("Session should still exist after delay")
-	}
-
-	// Test that we can capture pane content (proves session is ready)
-	// This simulates what would happen during attach
 	out, err := tmux.CapturePane(sessionName)
 	if err != nil {
-		t.Fatalf("Failed to capture pane (session not ready): %v", err)
+		t.Fatalf("Failed to capture pane: %v", err)
 	}
 
-	// Verify the command output is visible
-	if out == "" {
-		t.Error("Pane content should not be empty")
+	// Should show the error message
+	if !strings.Contains(out, "unknown option") && !strings.Contains(out, "error") {
+		t.Errorf("Expected error message for invalid flag, got: %s", out)
+	} else {
+		t.Logf("✓ Confirmed: Invalid flag causes error: %s", strings.TrimSpace(out))
 	}
-
-	t.Logf("Session initialized successfully. Pane content length: %d bytes", len(out))
 }
 
-func TestAttachWithoutDelay(t *testing.T) {
+// TestValidClaudeFlagWorks proves the fix works.
+func TestValidClaudeFlagWorks(t *testing.T) {
 	if !tmux.Available() {
 		t.Skip("tmux not available")
 	}
 
-	// Try multiple times to catch intermittent race condition
-	failures := 0
-	attempts := 10
-
-	for i := 0; i < attempts; i++ {
-		sessionName := fmt.Sprintf("test-attach-race-%d", i)
-
-		// Clean up
-		tmux.KillSession(sessionName)
-
-		// Create session
-		if err := tmux.CreateSession(sessionName, "echo 'Starting...'; sleep 30"); err != nil {
-			t.Fatalf("Failed to create session: %v", err)
-		}
-
-		// Try to capture IMMEDIATELY (no delay)
-		_, err := tmux.CapturePane(sessionName)
-		if err != nil {
-			failures++
-			t.Logf("Attempt %d: Immediate capture failed (race condition detected)", i+1)
-		}
-
-		// Clean up
-		tmux.KillSession(sessionName)
+	if _, err := exec.LookPath("claude"); err != nil {
+		t.Skip("claude not available")
 	}
 
-	if failures > 0 {
-		t.Errorf("Race condition detected: %d/%d attempts failed immediately", failures, attempts)
-		t.Logf("This proves the 500ms delay in main.go is necessary")
+	sessionName := "test-valid-flag"
+	tmux.KillSession(sessionName)
+	defer tmux.KillSession(sessionName)
+	defer tmux.KillServer()
+
+	// Test with VALID flag (the fix) - just check it starts without error
+	validCmd := "claude --permission-mode acceptEdits --help 2>&1 | head -3; sleep 2"
+	if err := tmux.CreateSession(sessionName, validCmd); err != nil {
+		t.Fatalf("Failed to create session: %v", err)
+	}
+
+	time.Sleep(500 * time.Millisecond)
+	out, err := tmux.CapturePane(sessionName)
+	if err != nil {
+		t.Fatalf("Failed to capture pane: %v", err)
+	}
+
+	// Should NOT show "unknown option" error
+	if strings.Contains(out, "unknown option") {
+		t.Errorf("Valid flag should not cause error, got: %s", out)
 	} else {
-		t.Logf("✓ All %d attempts succeeded (race condition may be system-dependent)", attempts)
+		t.Logf("✓ Valid flag works without error")
 	}
 }
