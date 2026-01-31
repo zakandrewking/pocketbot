@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"testing"
 	"time"
 
@@ -58,31 +59,36 @@ func TestAttachWithoutDelay(t *testing.T) {
 		t.Skip("tmux not available")
 	}
 
-	sessionName := "test-attach-nodelay"
+	// Try multiple times to catch intermittent race condition
+	failures := 0
+	attempts := 10
 
-	// Clean up
-	tmux.KillSession(sessionName)
-	defer tmux.KillSession(sessionName)
+	for i := 0; i < attempts; i++ {
+		sessionName := fmt.Sprintf("test-attach-race-%d", i)
 
-	// Create session
-	if err := tmux.CreateSession(sessionName, "echo 'Starting...'; sleep 30"); err != nil {
-		t.Fatalf("Failed to create session: %v", err)
-	}
+		// Clean up
+		tmux.KillSession(sessionName)
 
-	// Try to capture immediately (this might fail due to race condition)
-	// We don't fail the test if this errors - we just log it
-	_, err := tmux.CapturePane(sessionName)
-	if err != nil {
-		t.Logf("Immediate capture failed (race condition): %v", err)
+		// Create session
+		if err := tmux.CreateSession(sessionName, "echo 'Starting...'; sleep 30"); err != nil {
+			t.Fatalf("Failed to create session: %v", err)
+		}
 
-		// Wait and try again
-		time.Sleep(500 * time.Millisecond)
+		// Try to capture IMMEDIATELY (no delay)
 		_, err := tmux.CapturePane(sessionName)
 		if err != nil {
-			t.Fatalf("Capture still failed after delay: %v", err)
+			failures++
+			t.Logf("Attempt %d: Immediate capture failed (race condition detected)", i+1)
 		}
-		t.Log("✓ Session became ready after delay")
+
+		// Clean up
+		tmux.KillSession(sessionName)
+	}
+
+	if failures > 0 {
+		t.Errorf("Race condition detected: %d/%d attempts failed immediately", failures, attempts)
+		t.Logf("This proves the 500ms delay in main.go is necessary")
 	} else {
-		t.Log("✓ Session was immediately ready (no race condition)")
+		t.Logf("✓ All %d attempts succeeded (race condition may be system-dependent)", attempts)
 	}
 }
