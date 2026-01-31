@@ -32,7 +32,7 @@ type SessionConfig struct {
 func DefaultConfig() *Config {
 	return &Config{
 		Claude: ClaudeConfig{
-			Command: "claude --continue --accept-edits",
+			Command: "claude --continue --permission-mode acceptEdits",
 			Key:     "c",
 			Enabled: true,
 		},
@@ -76,7 +76,7 @@ func Load() (*Config, error) {
 
 	// Apply defaults for missing fields
 	if cfg.Claude.Command == "" {
-		cfg.Claude.Command = "claude --continue --accept-edits"
+		cfg.Claude.Command = "claude --continue --permission-mode acceptEdits"
 	}
 	if cfg.Claude.Key == "" {
 		cfg.Claude.Key = "c"

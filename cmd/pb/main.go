@@ -258,9 +258,19 @@ func main() {
 			continue
 		}
 
+		// Check if session is actually running before attaching
+		if !tmuxSess.IsRunning() {
+			fmt.Fprintf(os.Stderr, "Session %q is not running\n", m.sessionToAttach)
+			continue
+		}
+
 		// tmux attach - returns when user detaches (prefix+d)
 		if err := tmuxSess.Attach(); err != nil {
 			fmt.Fprintf(os.Stderr, "Attach error: %v\n", err)
+			// Check if session died
+			if !tmuxSess.IsRunning() {
+				fmt.Fprintf(os.Stderr, "Session exited. Check: tmux -L pocketbot list-sessions\n")
+			}
 		}
 
 		// Always return to home screen after detach
@@ -277,6 +287,10 @@ func handleSubcommand(cmd string) {
 		runCommand("go", "install", "./cmd/pb")
 	case "run":
 		runCommand("go", "run", "./cmd/pb")
+	case "sessions":
+		runCommand("tmux", "-L", "pocketbot", "list-sessions")
+	case "kill-all":
+		runCommand("tmux", "-L", "pocketbot", "kill-server")
 	case "help", "-h", "--help":
 		printHelp()
 	default:
@@ -305,6 +319,8 @@ Usage:
   pb build        Build binary
   pb install      Install to $GOPATH/bin
   pb run          Run development version
+  pb sessions     List active tmux sessions
+  pb kill-all     Kill all sessions
   pb help         Show this help
 
 Interactive mode keybindings:

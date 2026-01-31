@@ -9,7 +9,7 @@ import (
 func TestDefaultConfig(t *testing.T) {
 	cfg := DefaultConfig()
 
-	if cfg.Claude.Command != "claude --continue --accept-edits" {
+	if cfg.Claude.Command != "claude --continue --permission-mode acceptEdits" {
 		t.Errorf("Expected default claude command, got %q", cfg.Claude.Command)
 	}
 	if cfg.Claude.Key != "c" {
@@ -35,7 +35,7 @@ func TestLoadDefaultWhenNoFile(t *testing.T) {
 		t.Fatalf("Load should not error when file doesn't exist: %v", err)
 	}
 
-	if cfg.Claude.Command != "claude --continue --accept-edits" {
+	if cfg.Claude.Command != "claude --continue --permission-mode acceptEdits" {
 		t.Error("Should return default config when file doesn't exist")
 	}
 }

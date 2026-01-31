@@ -3,7 +3,7 @@
 
 # Claude session (default)
 claude:
-  command: "claude --continue --accept-edits"
+  command: "claude --continue --permission-mode acceptEdits"
   key: "c"
   enabled: true
 
