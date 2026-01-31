@@ -92,7 +92,7 @@ func (m model) updateHome(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		// Kill all tmux sessions and exit
 		tmux.KillServer()
 		return m, tea.Quit
-	case "q":
+	case "d":
 		// Quit without killing sessions
 		return m, tea.Quit
 	}
@@ -189,7 +189,7 @@ func (m model) viewHome() string {
 	}
 
 	// Instructions
-	instructions := instructionStyle.Render("Ctrl+C to kill all & quit • q to quit")
+	instructions := instructionStyle.Render("Ctrl+C to kill all & quit • d to quit")
 
 	return fmt.Sprintf("\n%s\n\n%s\n%s\n", title, sb.String(), instructions)
 }

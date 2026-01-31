@@ -37,9 +37,9 @@ func CreateSession(name, command string) error {
 		return err
 	}
 
-	// Bind 'd' to detach (no prefix needed)
+	// Bind Ctrl+D to detach (no prefix needed)
 	// This only affects pocketbot's tmux server, not user's main tmux
-	if err := cmd("bind-key", "-n", "d", "detach-client").Run(); err != nil {
+	if err := cmd("bind-key", "-n", "C-d", "detach-client").Run(); err != nil {
 		return err
 	}
 
@@ -56,7 +56,7 @@ func CreateSession(name, command string) error {
 func AttachSession(name string) error {
 	// Show a floating message for 3 seconds when attaching
 	// This appears as a small overlay in the center of the screen
-	cmd("display-message", "-t", name, "d to detach").Run()
+	cmd("display-message", "-t", name, "Ctrl+D to detach").Run()
 
 	c := cmd("attach-session", "-t", name)
 	c.Stdin = os.Stdin
