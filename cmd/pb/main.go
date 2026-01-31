@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"os"
+	"os/exec"
 	"strings"
 	"time"
 
@@ -216,6 +217,12 @@ func (m model) viewAttached() string {
 }
 
 func main() {
+	// Handle subcommands
+	if len(os.Args) > 1 {
+		handleSubcommand(os.Args[1])
+		return
+	}
+
 	m := initialModel()
 
 	// Note: We don't kill tmux sessions on exit - they persist in background
@@ -258,4 +265,54 @@ func main() {
 
 		// Always return to home screen after detach
 	}
+}
+
+func handleSubcommand(cmd string) {
+	switch cmd {
+	case "test":
+		runCommand("go", "test", "./...")
+	case "build":
+		runCommand("go", "build", "-o", "pb", "./cmd/pb")
+	case "install":
+		runCommand("go", "install", "./cmd/pb")
+	case "run":
+		runCommand("go", "run", "./cmd/pb")
+	case "help", "-h", "--help":
+		printHelp()
+	default:
+		fmt.Fprintf(os.Stderr, "Unknown command: %s\n", cmd)
+		fmt.Fprintf(os.Stderr, "Run 'pb help' for usage\n")
+		os.Exit(1)
+	}
+}
+
+func runCommand(name string, args ...string) {
+	cmd := exec.Command(name, args...)
+	cmd.Stdin = os.Stdin
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	if err := cmd.Run(); err != nil {
+		os.Exit(1)
+	}
+}
+
+func printHelp() {
+	fmt.Println(`pocketbot - Mobile-friendly tmux session manager
+
+Usage:
+  pb              Start interactive session manager
+  pb test         Run tests
+  pb build        Build binary
+  pb install      Install to $GOPATH/bin
+  pb run          Run development version
+  pb help         Show this help
+
+Interactive mode keybindings:
+  c               Attach to claude session
+  Ctrl+D          Detach from session (back to pb)
+  d               Quit pb (sessions keep running)
+  Ctrl+C          Kill all sessions and quit
+
+Config:
+  ~/.config/pocketbot/config.yaml`)
 }
