@@ -29,6 +29,32 @@ go build -o pb cmd/pb/main.go
 go install ./cmd/pb
 ```
 
+### Meta-Development: Using pb to test pb
+
+pb includes CLI commands for development, enabling you to use pb itself to test and build pb:
+
+```bash
+pb test         # Run tests
+pb build        # Build binary
+pb install      # Install to $GOPATH/bin
+pb sessions     # List active tmux sessions
+pb kill-all     # Kill all sessions
+```
+
+**Workflow:** You can configure pb sessions to run these commands interactively. Add to your `~/.config/pocketbot/config.yaml`:
+
+```yaml
+sessions:
+  - name: "test"
+    command: "pb test"
+    key: "t"
+  - name: "build"
+    command: "pb build && pb install"
+    key: "b"
+```
+
+Then run `pb`, press `t` to run tests in tmux, `Ctrl+D` to detach, etc. This creates a meta-workflow where pb manages its own development.
+
 ## Project Structure
 
 - `cmd/pb/` - Main CLI application entry point
