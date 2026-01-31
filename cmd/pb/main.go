@@ -166,7 +166,12 @@ func (m model) viewHome() string {
 		Foreground(lipgloss.Color("#AAAAAA")).
 		Italic(true)
 
-	title := titleStyle.Render("🤖 Welcome to PocketBot!")
+	// Show nesting level if we're nested
+	titleText := "🤖 Welcome to PocketBot!"
+	if level := os.Getenv("PB_LEVEL"); level != "" {
+		titleText = fmt.Sprintf("🤖 Welcome to PocketBot! (level %s)", level)
+	}
+	title := titleStyle.Render(titleText)
 
 	// Build status lines for all sessions
 	var sb strings.Builder
@@ -288,9 +293,19 @@ func handleSubcommand(cmd string) {
 	case "run":
 		runCommand("go", "run", "./cmd/pb")
 	case "sessions":
-		runCommand("tmux", "-L", "pocketbot", "list-sessions")
+		// Show sessions for current nesting level
+		socket := "pocketbot"
+		if level := os.Getenv("PB_LEVEL"); level != "" {
+			socket = "pocketbot-" + level
+		}
+		runCommand("tmux", "-L", socket, "list-sessions")
 	case "kill-all":
-		runCommand("tmux", "-L", "pocketbot", "kill-server")
+		// Kill sessions for current nesting level
+		socket := "pocketbot"
+		if level := os.Getenv("PB_LEVEL"); level != "" {
+			socket = "pocketbot-" + level
+		}
+		runCommand("tmux", "-L", socket, "kill-server")
 	case "help", "-h", "--help":
 		printHelp()
 	default:

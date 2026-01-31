@@ -1,21 +1,39 @@
 package tmux
 
 import (
+	"fmt"
 	"os"
 	"os/exec"
+	"strconv"
 	"sync"
 	"time"
 )
 
-// Socket name for pocketbot's tmux server (isolated from user's tmux)
-const Socket = "pocketbot"
-
 // IdleTimeout is how long without changes before marking session as idle
 const IdleTimeout = 5 * time.Second
 
+// getSocketName returns the tmux socket name for the current nesting level
+func getSocketName() string {
+	level := os.Getenv("PB_LEVEL")
+	if level == "" {
+		return "pocketbot"
+	}
+	return fmt.Sprintf("pocketbot-%s", level)
+}
+
+// getNestingLevel returns the current pb nesting level
+func getNestingLevel() int {
+	level := os.Getenv("PB_LEVEL")
+	if level == "" {
+		return 0
+	}
+	n, _ := strconv.Atoi(level)
+	return n
+}
+
 // cmd creates a tmux command using pocketbot's socket
 func cmd(args ...string) *exec.Cmd {
-	fullArgs := append([]string{"-L", Socket}, args...)
+	fullArgs := append([]string{"-L", getSocketName()}, args...)
 	return exec.Command("tmux", fullArgs...)
 }
 
@@ -32,7 +50,11 @@ func SessionExists(name string) bool {
 
 // CreateSession creates a new detached tmux session running the given command
 func CreateSession(name, command string) error {
-	if err := cmd("new-session", "-d", "-s", name, command).Run(); err != nil {
+	// Set PB_LEVEL environment variable for nested pb instances
+	nextLevel := getNestingLevel() + 1
+	envCmd := fmt.Sprintf("export PB_LEVEL=%d; %s", nextLevel, command)
+
+	if err := cmd("new-session", "-d", "-s", name, "sh", "-c", envCmd).Run(); err != nil {
 		return err
 	}
 
@@ -60,7 +82,12 @@ func CreateSession(name, command string) error {
 func AttachSession(name string) error {
 	// Show a floating message for 3 seconds when attaching
 	// This appears as a small overlay in the center of the screen
-	cmd("display-message", "-t", name, "Ctrl+D to detach").Run()
+	level := getNestingLevel()
+	msg := "Ctrl+D to detach"
+	if level > 0 {
+		msg = fmt.Sprintf("Ctrl+D to detach (pb level %d)", level)
+	}
+	cmd("display-message", "-t", name, msg).Run()
 
 	c := cmd("attach-session", "-t", name)
 	c.Stdin = os.Stdin
