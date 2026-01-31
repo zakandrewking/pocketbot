@@ -79,6 +79,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 	case tickMsg:
 		// Periodic update to refresh activity status
+		for _, sess := range m.sessions {
+			sess.UpdateActivity()
+		}
 		return m, tickCmd
 	}
 	return m, nil
@@ -174,7 +177,14 @@ func (m model) viewHome() string {
 
 		var status string
 		if tmuxSess.IsRunning() {
-			status = runningStyle.Render("● running")
+			if tmuxSess.IsActive() {
+				status = runningStyle.Render("● active")
+			} else {
+				// Running but idle
+				idleStyle := lipgloss.NewStyle().
+					Foreground(lipgloss.Color("#888888"))
+				status = idleStyle.Render("● idle")
+			}
 		} else {
 			status = stoppedStyle.Render("○ not running")
 		}

@@ -4,10 +4,14 @@ import (
 	"os"
 	"os/exec"
 	"sync"
+	"time"
 )
 
 // Socket name for pocketbot's tmux server (isolated from user's tmux)
 const Socket = "pocketbot"
+
+// IdleTimeout is how long without changes before marking session as idle
+const IdleTimeout = 5 * time.Second
 
 // cmd creates a tmux command using pocketbot's socket
 func cmd(args ...string) *exec.Cmd {
@@ -77,9 +81,11 @@ func KillServer() error {
 
 // Session represents a tmux-backed session
 type Session struct {
-	name    string
-	command string
-	mu      sync.Mutex
+	name         string
+	command      string
+	mu           sync.Mutex
+	lastCapture  string
+	lastActivity time.Time
 }
 
 // NewSession creates a new tmux session wrapper
@@ -121,4 +127,55 @@ func (s *Session) Stop() error {
 // Returns nil on normal detach, error on failure
 func (s *Session) Attach() error {
 	return AttachSession(s.name)
+}
+
+// capturePane captures the current pane content (last 10 lines only for efficiency)
+func (s *Session) capturePane() (string, error) {
+	// Only capture last 10 lines to reduce overhead
+	out, err := cmd("capture-pane", "-t", s.name, "-p", "-S", "-10").Output()
+	if err != nil {
+		return "", err
+	}
+	return string(out), nil
+}
+
+// UpdateActivity checks for pane changes and updates activity state
+// Returns true if active, false if idle
+func (s *Session) UpdateActivity() bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if !SessionExists(s.name) {
+		return false
+	}
+
+	// Capture current pane content
+	// Use a shorter capture to reduce overhead (last 10 lines only)
+	current, err := s.capturePane()
+	if err != nil {
+		// On error, assume no change but don't crash
+		return time.Since(s.lastActivity) < IdleTimeout
+	}
+
+	// Check if content changed
+	if current != s.lastCapture {
+		s.lastCapture = current
+		s.lastActivity = time.Now()
+		return true
+	}
+
+	// Content hasn't changed - check if idle timeout exceeded
+	return time.Since(s.lastActivity) < IdleTimeout
+}
+
+// IsActive returns whether the session is currently active (has recent activity)
+func (s *Session) IsActive() bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if !SessionExists(s.name) {
+		return false
+	}
+
+	return time.Since(s.lastActivity) < IdleTimeout
 }
