@@ -3,7 +3,7 @@
 
 # Claude session (default)
 claude:
-  command: "claude --continue"
+  command: "claude --continue --accept-edits"
   key: "c"
   enabled: true
 
