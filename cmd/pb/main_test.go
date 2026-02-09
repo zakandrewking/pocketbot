@@ -250,11 +250,11 @@ func TestDirJumpEnterChangesDirectory(t *testing.T) {
 		viewState:   viewHome,
 		mode:        modeDirJump,
 		dirQuery:    "proj",
-		lookupDir: func(query string) (string, error) {
+		lookupDirs: func(query string) ([]string, error) {
 			if query != "proj" {
 				t.Fatalf("expected query proj, got %q", query)
 			}
-			return "/tmp/project", nil
+			return []string{"/tmp/project"}, nil
 		},
 		chdir: func(path string) error {
 			changedTo = path
@@ -278,6 +278,36 @@ func TestDirJumpEnterChangesDirectory(t *testing.T) {
 	}
 	if !contains(m.homeNotice, "changed directory") {
 		t.Fatalf("expected changed-directory notice, got %q", m.homeNotice)
+	}
+}
+
+func TestDirJumpLetterSelectChangesDirectory(t *testing.T) {
+	var changedTo string
+	m := model{
+		config:         config.DefaultConfig(),
+		sessions:       map[string]*tmux.Session{},
+		bindings:       map[string]commandBinding{},
+		windowWidth:    80,
+		viewState:      viewHome,
+		mode:           modeDirJump,
+		dirQuery:       "proj",
+		dirSuggestions: []string{"/tmp/one", "/tmp/two"},
+		chdir:          func(path string) error { changedTo = path; return nil },
+	}
+
+	updatedModel, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("b")})
+	m, ok := updatedModel.(model)
+	if !ok {
+		t.Fatal("Update should return a model")
+	}
+	if cmd != nil {
+		t.Fatal("dir jump letter select should not quit")
+	}
+	if changedTo != "/tmp/two" {
+		t.Fatalf("expected chdir to /tmp/two, got %q", changedTo)
+	}
+	if m.mode != modeHome {
+		t.Fatal("letter select should return to home mode")
 	}
 }
 

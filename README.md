@@ -10,6 +10,7 @@ It is built for fast, repeatable keyboard control on small screens: single lette
 - Lets you detach and reattach quickly (`Ctrl+D` to detach from a session).
 - Supports multiple Claude/Codex/Cursor instances per machine.
 - Uses a compact 20-line mobile-first home view.
+- Shows the current working directory at the top of home.
 - Switches views automatically:
   - fewer than 10 Claude+Codex+Cursor instances: detailed rows
   - 10 or more: consolidated summary with drill-down picker

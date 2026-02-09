@@ -60,10 +60,11 @@ type model struct {
 	sessionToAttach string // Name of session to attach to
 	homeNotice      string
 	dirQuery        string
+	dirSuggestions  []string
 	hasFasder       bool
 	getwd           func() (string, error)
 	chdir           func(string) error
-	lookupDir       func(string) (string, error)
+	lookupDirs      func(string) ([]string, error)
 }
 
 func initialModel() model {
@@ -106,7 +107,7 @@ func initialModel() model {
 		pickerTargets: make(map[string]string),
 		getwd:         os.Getwd,
 		chdir:         os.Chdir,
-		lookupDir:     lookupDirectoryWithFasder,
+		lookupDirs:    lookupDirectoriesWithFasder,
 		hasFasder:     fasderAvailable(),
 	}
 }
@@ -305,17 +306,70 @@ func lookupDirectoryWithFasder(query string) (string, error) {
 	return strings.TrimSpace(lines[0]), nil
 }
 
+func lookupDirectoriesWithFasder(query string) ([]string, error) {
+	args := []string{"-d", "-l"}
+	if strings.TrimSpace(query) != "" {
+		args = append(args, query)
+	}
+	out, err := exec.Command("fasder", args...).Output()
+	if err != nil {
+		// Fallback to single-result lookup on older fasder variants.
+		one, oneErr := lookupDirectoryWithFasder(query)
+		if oneErr != nil {
+			return nil, err
+		}
+		return []string{one}, nil
+	}
+	lines := strings.Split(strings.TrimSpace(string(out)), "\n")
+	var dirs []string
+	for _, line := range lines {
+		p := strings.TrimSpace(line)
+		if p == "" {
+			continue
+		}
+		dirs = append(dirs, p)
+	}
+	if len(dirs) == 0 {
+		return nil, fmt.Errorf("no matching directories")
+	}
+	return dirs, nil
+}
+
 func fasderAvailable() bool {
 	_, err := exec.LookPath("fasder")
 	return err == nil
 }
 
-func isFasderMissingError(err error) bool {
-	if err == nil {
-		return false
+func (m *model) refreshDirSuggestions() {
+	lookup := m.lookupDirs
+	if lookup == nil {
+		lookup = lookupDirectoriesWithFasder
 	}
-	msg := err.Error()
-	return strings.Contains(msg, `exec: "fasder"`) || strings.Contains(msg, "executable file not found")
+	suggestions, err := lookup(m.dirQuery)
+	if err != nil {
+		m.dirSuggestions = nil
+		return
+	}
+	if len(suggestions) > 9 {
+		suggestions = suggestions[:9]
+	}
+	m.dirSuggestions = suggestions
+}
+
+func (m *model) applyDirChange(target string) (model, tea.Cmd) {
+	chdir := m.chdir
+	if chdir == nil {
+		chdir = os.Chdir
+	}
+	if err := chdir(target); err != nil {
+		m.homeNotice = fmt.Sprintf("cd failed: %v", err)
+		return *m, nil
+	}
+	m.mode = modeHome
+	m.homeNotice = fmt.Sprintf("changed directory to %s", target)
+	m.dirQuery = ""
+	m.dirSuggestions = nil
+	return *m, nil
 }
 
 func fallbackCommand(tool, command string) string {
@@ -495,47 +549,37 @@ func (m model) updateHome(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		case tea.KeyEsc:
 			m.mode = modeHome
 			m.dirQuery = ""
+			m.dirSuggestions = nil
 			m.homeNotice = ""
 			return m, nil
 		case tea.KeyEnter:
-			if strings.TrimSpace(m.dirQuery) == "" {
-				m.homeNotice = "enter a directory query"
+			if len(m.dirSuggestions) == 0 {
+				m.refreshDirSuggestions()
+			}
+			if len(m.dirSuggestions) == 0 {
+				m.homeNotice = "no matching directories"
 				return m, nil
 			}
-			lookup := m.lookupDir
-			if lookup == nil {
-				lookup = lookupDirectoryWithFasder
-			}
-			target, err := lookup(m.dirQuery)
-			if err != nil {
-				if isFasderMissingError(err) {
-					m.homeNotice = "fasder not found; install fasder to use z"
-					m.mode = modeHome
-					m.dirQuery = ""
-					return m, nil
-				}
-				m.homeNotice = fmt.Sprintf("fasder lookup failed: %v", err)
-				return m, nil
-			}
-			chdir := m.chdir
-			if chdir == nil {
-				chdir = os.Chdir
-			}
-			if err := chdir(target); err != nil {
-				m.homeNotice = fmt.Sprintf("cd failed: %v", err)
-				return m, nil
-			}
-			m.mode = modeHome
-			m.homeNotice = fmt.Sprintf("changed directory to %s", target)
-			m.dirQuery = ""
-			return m, nil
+			return m.applyDirChange(m.dirSuggestions[0])
 		case tea.KeyBackspace, tea.KeyDelete:
 			if len(m.dirQuery) > 0 {
 				m.dirQuery = m.dirQuery[:len(m.dirQuery)-1]
 			}
+			m.refreshDirSuggestions()
 			return m, nil
 		case tea.KeyRunes:
-			m.dirQuery += string(msg.Runes)
+			input := string(msg.Runes)
+			if len(input) == 1 {
+				letter := strings.ToLower(input)
+				if len(m.dirSuggestions) > 0 {
+					i := int(letter[0] - 'a')
+					if i >= 0 && i < len(m.dirSuggestions) {
+						return m.applyDirChange(m.dirSuggestions[i])
+					}
+				}
+			}
+			m.dirQuery += input
+			m.refreshDirSuggestions()
 			return m, nil
 		default:
 			return m, nil
@@ -602,6 +646,7 @@ func (m model) updateHome(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.mode = modeDirJump
 		m.homeNotice = ""
 		m.dirQuery = ""
+		m.dirSuggestions = nil
 		return m, nil
 	case "n":
 		m.mode = modeNewTool
@@ -703,8 +748,15 @@ func (m model) viewHome() string {
 		lines = append(lines,
 			"z fasder jump",
 			fmt.Sprintf("query: %s", m.dirQuery),
-			"enter run   esc cancel",
+			"enter top hit   esc cancel",
 		)
+		for i, suggestion := range m.dirSuggestions {
+			k := alphaKey(i)
+			if k == "" {
+				continue
+			}
+			lines = append(lines, fmt.Sprintf("(%s) %s", k, suggestion))
+		}
 	case modeNewTool:
 		lines = append(lines,
 			fmt.Sprintf("%s new claude", keyStyle.Render("c")),
