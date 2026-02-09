@@ -63,6 +63,9 @@ Then run `pb`, press `t` to run tests in tmux, `Ctrl+D` to detach, etc. This cre
 ## Workflow
 
 - After finishing work and verifying it, always commit changes and run `go install ./cmd/pb`
+- Each commit should represent one specific piece of work
+- When responding to feedback, prefer amending the relevant prior commit when it keeps history cleaner
+- CLAUDE/AGENTS instruction updates can be committed alongside related code changes
 - Wait for explicit confirmation before pushing
 - Always work in small testable steps (unit tests, integration tests, or manual testing)
 - **All new features require tests** - either unit tests, integration tests, or clear manual testing steps

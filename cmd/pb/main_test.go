@@ -273,7 +273,7 @@ func TestHomeViewShowsSessionStatus(t *testing.T) {
 	}
 }
 
-func TestDirectoryBindingBlocksAttachInDifferentDirectory(t *testing.T) {
+func TestDirectoryBindingAllowsAttachInDifferentDirectory(t *testing.T) {
 	cwd1 := t.TempDir()
 	cwd2 := t.TempDir()
 	sessionName := fmt.Sprintf("test-bind-%d", time.Now().UnixNano())
@@ -313,21 +313,21 @@ func TestDirectoryBindingBlocksAttachInDifferentDirectory(t *testing.T) {
 	m.shouldAttach = false
 	m.sessionToAttach = ""
 
-	// Try from cwd2: should be blocked because command is bound to cwd1.
+	// Try from cwd2: should still allow attach even when bound elsewhere.
 	if err := os.Chdir(cwd2); err != nil {
 		t.Fatalf("failed to chdir to cwd2: %v", err)
 	}
 	updatedModel, cmd = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("t")})
 	m = updatedModel.(model)
 
-	if cmd != nil {
-		t.Fatal("expected no attach quit command when directory binding mismatches")
+	if cmd == nil {
+		t.Fatal("expected attach quit command when directory differs")
 	}
-	if m.shouldAttach {
-		t.Fatal("shouldAttach should remain false on directory mismatch")
+	if !m.shouldAttach {
+		t.Fatal("shouldAttach should remain true on directory mismatch")
 	}
-	if !contains(m.homeNotice, cwd1) {
-		t.Fatalf("expected mismatch notice to include bound directory %q, got %q", cwd1, m.homeNotice)
+	if m.homeNotice != "" {
+		t.Fatalf("expected no mismatch block notice, got %q", m.homeNotice)
 	}
 }
 

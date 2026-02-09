@@ -228,15 +228,6 @@ func (m model) updateHome(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				continue
 			}
 
-			// Enforce directory binding when session is already running.
-			if binding, ok := m.bindings[sess.Name]; ok && binding.Running {
-				currentCwd := m.currentDir()
-				if binding.Cwd != "" && currentCwd != "" && binding.Cwd != currentCwd {
-					m.homeNotice = fmt.Sprintf("%s is bound to %s (current: %s)", sess.Name, binding.Cwd, currentCwd)
-					return m, nil
-				}
-			}
-
 			// Start session if not running
 			if !tmuxSess.IsRunning() {
 				if err := tmuxSess.Start(); err != nil {
@@ -322,8 +313,8 @@ func (m model) viewHome() string {
 	bindingStyle := lipgloss.NewStyle().
 		Foreground(lipgloss.Color("#777777"))
 
-	warningStyle := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("#FFCC66"))
+	alertStyle := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("#4DA3FF"))
 
 	// Show nesting level if we're nested
 	titleText := "🤖 Welcome to PocketBot!"
@@ -360,7 +351,7 @@ func (m model) viewHome() string {
 		bindingText := ""
 		if binding, ok := m.bindings[sess.Name]; ok && binding.Cwd != "" {
 			if currentCwd != "" && binding.Cwd != currentCwd {
-				bindingText = warningStyle.Render(fmt.Sprintf(" [%s: %s]", "bound elsewhere", binding.Cwd))
+				bindingText = alertStyle.Render(fmt.Sprintf(" [%s: %s]", "bound elsewhere", binding.Cwd))
 			} else {
 				bindingText = bindingStyle.Render(fmt.Sprintf(" [%s]", binding.Cwd))
 			}
@@ -387,7 +378,7 @@ func (m model) viewHome() string {
 
 	notice := ""
 	if m.homeNotice != "" {
-		notice = warningStyle.Render(m.homeNotice) + "\n"
+		notice = alertStyle.Render(m.homeNotice) + "\n"
 	}
 
 	return fmt.Sprintf("\n%s\n\n%s%s\n%s\n", title, notice, sb.String(), instructions)
