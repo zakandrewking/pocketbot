@@ -167,6 +167,7 @@ type Session struct {
 	mu           sync.Mutex
 	lastCapture  string
 	lastActivity time.Time
+	nextPollAt   time.Time
 }
 
 // NewSession creates a new tmux session wrapper
@@ -229,24 +230,32 @@ func (s *Session) UpdateActivity() bool {
 	if !SessionExists(s.name) {
 		return false
 	}
+	now := time.Now()
+	if !s.nextPollAt.IsZero() && now.Before(s.nextPollAt) {
+		return now.Sub(s.lastActivity) < IdleTimeout
+	}
 
 	// Capture current pane content
 	// Use a shorter capture to reduce overhead (last 10 lines only)
 	current, err := s.capturePane()
 	if err != nil {
 		// On error, assume no change but don't crash
-		return time.Since(s.lastActivity) < IdleTimeout
+		s.nextPollAt = now.Add(3 * time.Second)
+		return now.Sub(s.lastActivity) < IdleTimeout
 	}
 
 	// Check if content changed
 	if current != s.lastCapture {
 		s.lastCapture = current
-		s.lastActivity = time.Now()
+		s.lastActivity = now
+		s.nextPollAt = now.Add(1 * time.Second)
 		return true
 	}
 
+	s.nextPollAt = now.Add(nextActivityPollInterval(now.Sub(s.lastActivity)))
+
 	// Content hasn't changed - check if idle timeout exceeded
-	return time.Since(s.lastActivity) < IdleTimeout
+	return now.Sub(s.lastActivity) < IdleTimeout
 }
 
 // IsActive returns whether the session is currently active (has recent activity)
@@ -259,4 +268,17 @@ func (s *Session) IsActive() bool {
 	}
 
 	return time.Since(s.lastActivity) < IdleTimeout
+}
+
+func nextActivityPollInterval(idleFor time.Duration) time.Duration {
+	switch {
+	case idleFor < IdleTimeout:
+		return 1 * time.Second
+	case idleFor < 30*time.Second:
+		return 2 * time.Second
+	case idleFor < 2*time.Minute:
+		return 5 * time.Second
+	default:
+		return 10 * time.Second
+	}
 }
