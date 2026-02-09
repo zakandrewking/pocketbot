@@ -280,6 +280,24 @@ func repoFromCwd(cwd string) string {
 	return filepath.Base(cwd)
 }
 
+func fallbackCommand(tool, command string) string {
+	switch tool {
+	case "claude":
+		if command == "claude --continue --permission-mode acceptEdits" {
+			return "claude --continue --permission-mode acceptEdits || claude --permission-mode acceptEdits"
+		}
+	case "codex":
+		if command == "codex resume --last" {
+			return "codex resume --last || codex"
+		}
+	case "cursor":
+		if command == "agent resume" {
+			return "agent resume || agent"
+		}
+	}
+	return command
+}
+
 func (m model) startAndAttachSession(name, command string) (model, tea.Cmd) {
 	sess, exists := m.sessions[name]
 	if !exists {
@@ -294,7 +312,8 @@ func (m model) startAndAttachSession(name, command string) (model, tea.Cmd) {
 			m.homeNotice = fmt.Sprintf("session %s is not running", name)
 			return m, nil
 		}
-		if err := tmux.CreateSession(name, command); err != nil {
+		launchCommand := fallbackCommand(toolFromSessionName(name), command)
+		if err := tmux.CreateSession(name, launchCommand); err != nil {
 			m.homeNotice = fmt.Sprintf("failed to start %s: %v", name, err)
 			return m, nil
 		}
@@ -314,7 +333,8 @@ func (m model) createAndAttachTool(tool string) (model, tea.Cmd) {
 		return m, nil
 	}
 	name := m.nextSessionName(tool)
-	if err := tmux.CreateSession(name, command); err != nil {
+	launchCommand := fallbackCommand(tool, command)
+	if err := tmux.CreateSession(name, launchCommand); err != nil {
 		m.homeNotice = fmt.Sprintf("failed to create %s: %v", tool, err)
 		return m, nil
 	}

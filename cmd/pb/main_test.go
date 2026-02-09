@@ -205,6 +205,49 @@ func TestDefaultInstructionsShowMobileShortcuts(t *testing.T) {
 	}
 }
 
+func TestFallbackCommand(t *testing.T) {
+	tests := []struct {
+		name    string
+		tool    string
+		command string
+		want    string
+	}{
+		{
+			name:    "claude resume fallback",
+			tool:    "claude",
+			command: "claude --continue --permission-mode acceptEdits",
+			want:    "claude --continue --permission-mode acceptEdits || claude --permission-mode acceptEdits",
+		},
+		{
+			name:    "codex resume fallback",
+			tool:    "codex",
+			command: "codex resume --last",
+			want:    "codex resume --last || codex",
+		},
+		{
+			name:    "cursor resume fallback",
+			tool:    "cursor",
+			command: "agent resume",
+			want:    "agent resume || agent",
+		},
+		{
+			name:    "custom command unchanged",
+			tool:    "codex",
+			command: "codex --model gpt-5",
+			want:    "codex --model gpt-5",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := fallbackCommand(tt.tool, tt.command)
+			if got != tt.want {
+				t.Fatalf("fallbackCommand(%q, %q) = %q, want %q", tt.tool, tt.command, got, tt.want)
+			}
+		})
+	}
+}
+
 func contains(s, substr string) bool {
 	return len(s) >= len(substr) && (s == substr || len(s) > len(substr) && (s[:len(substr)] == substr || contains(s[1:], substr)))
 }
