@@ -12,6 +12,7 @@ import (
 type Config struct {
 	Claude   ClaudeConfig    `yaml:"claude"`
 	Codex    CodexConfig     `yaml:"codex"`
+	Cursor   CursorConfig    `yaml:"cursor"`
 	Sessions []SessionConfig `yaml:"sessions"`
 }
 
@@ -24,6 +25,13 @@ type ClaudeConfig struct {
 
 // CodexConfig represents the Codex session configuration
 type CodexConfig struct {
+	Command string `yaml:"command"`
+	Key     string `yaml:"key"`
+	Enabled bool   `yaml:"enabled"`
+}
+
+// CursorConfig represents the Cursor session configuration
+type CursorConfig struct {
 	Command string `yaml:"command"`
 	Key     string `yaml:"key"`
 	Enabled bool   `yaml:"enabled"`
@@ -47,6 +55,11 @@ func DefaultConfig() *Config {
 		Codex: CodexConfig{
 			Command: "codex resume --last",
 			Key:     "x",
+			Enabled: true,
+		},
+		Cursor: CursorConfig{
+			Command: "agent resume",
+			Key:     "u",
 			Enabled: true,
 		},
 		Sessions: []SessionConfig{},
@@ -94,6 +107,13 @@ func Load() (*Config, error) {
 			_, hasCodexEnabled = codexMap["enabled"]
 		}
 	}
+	_, hasCursorBlock := raw["cursor"]
+	hasCursorEnabled := false
+	if hasCursorBlock {
+		if cursorMap, ok := raw["cursor"].(map[string]any); ok {
+			_, hasCursorEnabled = cursorMap["enabled"]
+		}
+	}
 
 	var cfg Config
 	if err := yaml.Unmarshal(data, &cfg); err != nil {
@@ -120,6 +140,19 @@ func Load() (*Config, error) {
 			cfg.Codex.Enabled = true
 		}
 	}
+	if !hasCursorBlock {
+		cfg.Cursor = DefaultConfig().Cursor
+	} else {
+		if cfg.Cursor.Command == "" {
+			cfg.Cursor.Command = "agent resume"
+		}
+		if cfg.Cursor.Key == "" {
+			cfg.Cursor.Key = "u"
+		}
+		if !hasCursorEnabled {
+			cfg.Cursor.Enabled = true
+		}
+	}
 
 	// Validate
 	if err := cfg.Validate(); err != nil {
@@ -142,6 +175,12 @@ func (c *Config) Validate() error {
 			return fmt.Errorf("duplicate key %q used by %q and %q", c.Codex.Key, existing, "codex")
 		}
 		keys[c.Codex.Key] = "codex"
+	}
+	if c.Cursor.Enabled {
+		if existing, ok := keys[c.Cursor.Key]; ok {
+			return fmt.Errorf("duplicate key %q used by %q and %q", c.Cursor.Key, existing, "cursor")
+		}
+		keys[c.Cursor.Key] = "cursor"
 	}
 
 	for _, session := range c.Sessions {
@@ -181,6 +220,13 @@ func (c *Config) AllSessions() []SessionConfig {
 			Name:    "codex",
 			Command: c.Codex.Command,
 			Key:     c.Codex.Key,
+		})
+	}
+	if c.Cursor.Enabled {
+		sessions = append(sessions, SessionConfig{
+			Name:    "cursor",
+			Command: c.Cursor.Command,
+			Key:     c.Cursor.Key,
 		})
 	}
 

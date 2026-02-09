@@ -27,6 +27,15 @@ func TestDefaultConfig(t *testing.T) {
 	if !cfg.Codex.Enabled {
 		t.Error("Codex should be enabled by default")
 	}
+	if cfg.Cursor.Command != "agent resume" {
+		t.Errorf("Expected default cursor command, got %q", cfg.Cursor.Command)
+	}
+	if cfg.Cursor.Key != "u" {
+		t.Errorf("Expected default cursor key 'u', got %q", cfg.Cursor.Key)
+	}
+	if !cfg.Cursor.Enabled {
+		t.Error("Cursor should be enabled by default")
+	}
 	if len(cfg.Sessions) != 0 {
 		t.Errorf("Expected no custom sessions by default, got %d", len(cfg.Sessions))
 	}
@@ -50,6 +59,9 @@ func TestLoadDefaultWhenNoFile(t *testing.T) {
 	if cfg.Codex.Command != "codex resume --last" || cfg.Codex.Key != "x" || !cfg.Codex.Enabled {
 		t.Error("Should include default codex config when file doesn't exist")
 	}
+	if cfg.Cursor.Command != "agent resume" || cfg.Cursor.Key != "u" || !cfg.Cursor.Enabled {
+		t.Error("Should include default cursor config when file doesn't exist")
+	}
 }
 
 func TestLoadValidConfig(t *testing.T) {
@@ -66,6 +78,11 @@ claude:
 codex:
   command: "codex --model gpt-5"
   key: "x"
+  enabled: true
+
+cursor:
+  command: "agent resume"
+  key: "u"
   enabled: true
 
 sessions:
@@ -99,6 +116,12 @@ sessions:
 	if cfg.Codex.Key != "x" {
 		t.Errorf("Expected codex key 'x', got %q", cfg.Codex.Key)
 	}
+	if cfg.Cursor.Command != "agent resume" {
+		t.Errorf("Expected cursor command to be loaded, got %q", cfg.Cursor.Command)
+	}
+	if cfg.Cursor.Key != "u" {
+		t.Errorf("Expected cursor key 'u', got %q", cfg.Cursor.Key)
+	}
 
 	if cfg.Sessions[0].Name != "dev-server" {
 		t.Errorf("Expected session name 'dev-server', got %q", cfg.Sessions[0].Name)
@@ -123,6 +146,11 @@ codex:
   command: "codex resume --last"
   key: "x"
   enabled: false
+
+cursor:
+  command: "agent resume"
+  key: "u"
+  enabled: true
 `
 	configPath := filepath.Join(configDir, "config.yaml")
 	if err := os.WriteFile(configPath, []byte(configContent), 0644); err != nil {
@@ -153,6 +181,11 @@ func TestValidateDuplicateKeys(t *testing.T) {
 		Codex: CodexConfig{
 			Command: "codex resume --last",
 			Key:     "x",
+			Enabled: true,
+		},
+		Cursor: CursorConfig{
+			Command: "agent resume",
+			Key:     "u",
 			Enabled: true,
 		},
 		Sessions: []SessionConfig{
@@ -221,15 +254,20 @@ func TestAllSessions(t *testing.T) {
 			Key:     "x",
 			Enabled: true,
 		},
+		Cursor: CursorConfig{
+			Command: "agent resume",
+			Key:     "u",
+			Enabled: true,
+		},
 		Sessions: []SessionConfig{
 			{Name: "test1", Command: "test1", Key: "t"},
-			{Name: "test2", Command: "test2", Key: "u"},
+			{Name: "test2", Command: "test2", Key: "v"},
 		},
 	}
 
 	all := cfg.AllSessions()
-	if len(all) != 4 {
-		t.Errorf("Expected 4 sessions (claude + codex + 2 custom), got %d", len(all))
+	if len(all) != 5 {
+		t.Errorf("Expected 5 sessions (claude + codex + cursor + 2 custom), got %d", len(all))
 	}
 
 	if all[0].Name != "claude" {
@@ -237,6 +275,9 @@ func TestAllSessions(t *testing.T) {
 	}
 	if all[1].Name != "codex" {
 		t.Error("Second session should be codex")
+	}
+	if all[2].Name != "cursor" {
+		t.Error("Third session should be cursor")
 	}
 }
 
@@ -250,6 +291,11 @@ func TestAllSessionsClaudeDisabled(t *testing.T) {
 		Codex: CodexConfig{
 			Command: "codex resume --last",
 			Key:     "x",
+			Enabled: false,
+		},
+		Cursor: CursorConfig{
+			Command: "agent resume",
+			Key:     "u",
 			Enabled: false,
 		},
 		Sessions: []SessionConfig{

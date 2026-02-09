@@ -82,6 +82,9 @@ func TestNEntersNewMode(t *testing.T) {
 	if !contains(m.View(), "c new claude") {
 		t.Fatal("expected new-tool picker in view")
 	}
+	if !contains(m.View(), "u new cursor") {
+		t.Fatal("expected cursor option in new-tool picker")
+	}
 }
 
 func TestKEntersKillMode(t *testing.T) {
@@ -273,6 +276,9 @@ func TestHomeViewShowsSessionStatus(t *testing.T) {
 	}
 	if !contains(view, "claude") || !contains(view, "codex") || !contains(view, "not running") {
 		t.Error("Should show claude/codex not-running rows when no sessions are active")
+	}
+	if !contains(view, "cursor") {
+		t.Error("Should show cursor not-running row when no sessions are active")
 	}
 
 	// Start claude session (default config has 'claude' session)

@@ -1,6 +1,6 @@
 # PocketBot
 
-PocketBot (`pb`) is a tmux-backed launcher for Claude, Codex, and other long-running terminal workflows.
+PocketBot (`pb`) is a tmux-backed launcher for Claude, Codex, Cursor, and other long-running terminal workflows.
 
 It is built for fast, repeatable keyboard control on small screens: single letters, letter-pair pickers, and `Ctrl+<letter>` globals.
 
@@ -8,10 +8,10 @@ It is built for fast, repeatable keyboard control on small screens: single lette
 
 - Keeps sessions alive in the background (tmux-backed).
 - Lets you detach and reattach quickly (`Ctrl+D` to detach from a session).
-- Supports multiple Claude/Codex instances per machine.
+- Supports multiple Claude/Codex/Cursor instances per machine.
 - Uses a compact 20-line mobile-first home view.
 - Switches views automatically:
-  - fewer than 10 Claude+Codex instances: detailed rows
+  - fewer than 10 Claude+Codex+Cursor instances: detailed rows
   - 10 or more: consolidated summary with drill-down picker
 - Supports custom commands as first-class sessions.
 
@@ -25,9 +25,11 @@ go install github.com/zakandrewking/pocketbot/cmd/pb@latest
 
 - `c`: attach Claude (create if none, picker if multiple)
 - `x`: attach Codex (create if none, picker if multiple)
-- `n`: create new instance, then choose `c` or `x`
-- `k`: kill one instance, then choose `c` or `x` (picker appears if needed)
+- `u`: attach Cursor (create if none, picker if multiple)
+- `n`: create new instance, then choose `c`, `x`, or `u`
+- `k`: kill one instance, then choose `c`, `x`, or `u` (picker appears if needed)
 - `d`: back or quit UI (sessions keep running)
+- `Esc`: go back/cancel in picker-style flows
 - `Ctrl+C`: kill all sessions and quit
 
 ## Quick Start
@@ -38,7 +40,7 @@ pb
 
 Typical loop:
 
-1. Press `c` or `x` to jump into a coding session.
+1. Press `c`, `x`, or `u` to jump into a coding session.
 2. Press `Ctrl+D` to detach back to `pb`.
 3. Press `n` to spin up another instance for a parallel task.
 4. Press `k` to clean up a specific instance.
@@ -58,6 +60,11 @@ codex:
   key: "x"
   enabled: true
 
+cursor:
+  command: "agent resume"
+  key: "u"
+  enabled: true
+
 sessions:
   - name: "dev-server"
     command: "npm run dev"
@@ -67,7 +74,7 @@ sessions:
     key: "l"
 ```
 
-Reserved keys in the default UI: `c`, `x`, `n`, `k`, `d`.
+Reserved keys in the default UI: `c`, `x`, `u`, `n`, `k`, `d`, `Esc`.
 
 See `config.example.yaml` for more examples.
 

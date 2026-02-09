@@ -177,6 +177,8 @@ func toolFromSessionName(name string) string {
 		return "claude"
 	case name == "codex" || strings.HasPrefix(name, "codex-"):
 		return "codex"
+	case name == "cursor" || strings.HasPrefix(name, "cursor-"):
+		return "cursor"
 	default:
 		return ""
 	}
@@ -217,6 +219,8 @@ func (m model) commandForTool(tool string) string {
 		return m.config.Claude.Command
 	case "codex":
 		return m.config.Codex.Command
+	case "cursor":
+		return m.config.Cursor.Command
 	default:
 		return ""
 	}
@@ -228,6 +232,8 @@ func (m model) keyForTool(tool string) string {
 		return m.config.Claude.Key
 	case "codex":
 		return m.config.Codex.Key
+	case "cursor":
+		return m.config.Cursor.Key
 	default:
 		return ""
 	}
@@ -239,6 +245,8 @@ func (m model) toolEnabled(tool string) bool {
 		return m.config.Claude.Enabled
 	case "codex":
 		return m.config.Codex.Enabled
+	case "cursor":
+		return m.config.Cursor.Enabled
 	default:
 		return false
 	}
@@ -430,8 +438,10 @@ func (m model) updateHome(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m.createAndAttachTool("claude")
 		case "x":
 			return m.createAndAttachTool("codex")
+		case "u":
+			return m.createAndAttachTool("cursor")
 		default:
-			m.homeNotice = fmt.Sprintf("Unknown new target %q. Use c or x.", key)
+			m.homeNotice = fmt.Sprintf("Unknown new target %q. Use c, x, or u.", key)
 			return m, nil
 		}
 	case modeKillTool:
@@ -440,8 +450,10 @@ func (m model) updateHome(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m.handleToolKill("claude")
 		case "x":
 			return m.handleToolKill("codex")
+		case "u":
+			return m.handleToolKill("cursor")
 		default:
-			m.homeNotice = fmt.Sprintf("Unknown kill target %q. Use c or x.", key)
+			m.homeNotice = fmt.Sprintf("Unknown kill target %q. Use c, x, or u.", key)
 			return m, nil
 		}
 	case modePickAttach:
@@ -472,6 +484,8 @@ func (m model) updateHome(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m.handleToolAttach("claude")
 	case "x":
 		return m.handleToolAttach("codex")
+	case "u":
+		return m.handleToolAttach("cursor")
 	case "n":
 		m.mode = modeNewTool
 		m.homeNotice = ""
@@ -571,12 +585,14 @@ func (m model) viewHome() string {
 		lines = append(lines,
 			fmt.Sprintf("%s new claude", keyStyle.Render("c")),
 			fmt.Sprintf("%s new codex", keyStyle.Render("x")),
+			fmt.Sprintf("%s new cursor", keyStyle.Render("u")),
 			"esc cancel",
 		)
 	case modeKillTool:
 		lines = append(lines,
 			fmt.Sprintf("%s kill claude", keyStyle.Render("c")),
 			fmt.Sprintf("%s kill codex", keyStyle.Render("x")),
+			fmt.Sprintf("%s kill cursor", keyStyle.Render("u")),
 			"esc cancel",
 		)
 	case modePickAttach, modePickKill:
@@ -611,14 +627,17 @@ func (m model) viewHome() string {
 	default:
 		claude := m.runningToolSessions("claude")
 		codex := m.runningToolSessions("codex")
-		total := len(claude) + len(codex)
+		cursor := m.runningToolSessions("cursor")
+		total := len(claude) + len(codex) + len(cursor)
 		lines = append(lines, metaStyle.Render(fmt.Sprintf("instances: %d", total)))
 		if total < 10 {
 			lines = append(lines, m.detailedRows("claude", claude)...)
 			lines = append(lines, m.detailedRows("codex", codex)...)
+			lines = append(lines, m.detailedRows("cursor", cursor)...)
 		} else {
 			lines = append(lines, m.summaryRow("claude", claude))
 			lines = append(lines, m.summaryRow("codex", codex))
+			lines = append(lines, m.summaryRow("cursor", cursor))
 		}
 		lines = append(lines,
 			fmt.Sprintf("%s new", keyStyle.Render("n")),
@@ -880,8 +899,10 @@ Usage:
 Interactive mode keybindings:
   c               Attach claude (picker if multiple, create if none)
   x               Attach codex (picker if multiple, create if none)
-  n               New instance (then c/x)
-  k               Kill one instance (then c/x and picker if needed)
+  u               Attach cursor (picker if multiple, create if none)
+  n               New instance (then c/x/u)
+  k               Kill one instance (then c/x/u and picker if needed)
+  Esc             Go back/cancel in menus
   Ctrl+D          Detach from session (back to pb)
   d               Quit pb (sessions keep running)
   Ctrl+C          Kill all sessions and quit
