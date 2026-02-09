@@ -166,6 +166,32 @@ func TestXCancelsAttachPickerMode(t *testing.T) {
 	}
 }
 
+func TestXCancelsNewToolMode(t *testing.T) {
+	m := model{
+		config:      config.DefaultConfig(),
+		sessions:    map[string]*tmux.Session{},
+		bindings:    map[string]commandBinding{},
+		windowWidth: 80,
+		viewState:   viewHome,
+		mode:        modeNewTool,
+	}
+
+	updatedModel, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("x")})
+	m, ok := updatedModel.(model)
+	if !ok {
+		t.Fatal("Update should return a model")
+	}
+	if cmd != nil {
+		t.Fatal("x cancel in new mode should not quit")
+	}
+	if m.mode != modeHome {
+		t.Fatal("x should cancel new-tool mode and return home")
+	}
+	if m.shouldAttach {
+		t.Fatal("x cancel should not trigger attach")
+	}
+}
+
 func TestViewRendersWelcomeMessage(t *testing.T) {
 	m := initialModel()
 	view := m.View()

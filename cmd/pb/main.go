@@ -428,20 +428,28 @@ func (m model) updateHome(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		switch key {
 		case "c":
 			return m.createAndAttachTool("claude")
-		case "x":
+		case "z":
 			return m.createAndAttachTool("codex")
+		case "x":
+			m.mode = modeHome
+			m.homeNotice = ""
+			return m, nil
 		default:
-			m.homeNotice = fmt.Sprintf("Unknown new target %q. Use c or x.", key)
+			m.homeNotice = fmt.Sprintf("Unknown new target %q. Use c or z.", key)
 			return m, nil
 		}
 	case modeKillTool:
 		switch key {
 		case "c":
 			return m.handleToolKill("claude")
-		case "x":
+		case "z":
 			return m.handleToolKill("codex")
+		case "x":
+			m.mode = modeHome
+			m.homeNotice = ""
+			return m, nil
 		default:
-			m.homeNotice = fmt.Sprintf("Unknown kill target %q. Use c or x.", key)
+			m.homeNotice = fmt.Sprintf("Unknown kill target %q. Use c or z.", key)
 			return m, nil
 		}
 	case modePickAttach:
@@ -580,14 +588,14 @@ func (m model) viewHome() string {
 	case modeNewTool:
 		lines = append(lines,
 			fmt.Sprintf("%s new claude", keyStyle.Render("c")),
-			fmt.Sprintf("%s new codex", keyStyle.Render("x")),
-			fmt.Sprintf("%s cancel", keyStyle.Render("d")),
+			fmt.Sprintf("%s new codex", keyStyle.Render("z")),
+			fmt.Sprintf("%s cancel", keyStyle.Render("x")),
 		)
 	case modeKillTool:
 		lines = append(lines,
 			fmt.Sprintf("%s kill claude", keyStyle.Render("c")),
-			fmt.Sprintf("%s kill codex", keyStyle.Render("x")),
-			fmt.Sprintf("%s cancel", keyStyle.Render("d")),
+			fmt.Sprintf("%s kill codex", keyStyle.Render("z")),
+			fmt.Sprintf("%s cancel", keyStyle.Render("x")),
 		)
 	case modePickAttach, modePickKill:
 		action := "attach"
