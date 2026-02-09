@@ -190,7 +190,7 @@ func alphaKey(i int) string {
 }
 
 func pickerKey(i int) string {
-	chars := "abcefghijklmnopqrstuvwxyz" // reserve d for cancel in picker modes
+	chars := "abcefghijklmnopqrstuvwyz" // reserve d and x for non-target controls in picker modes
 	if i < 0 || i >= len(chars) {
 		return ""
 	}
@@ -410,9 +410,11 @@ func (m model) updateHome(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			// Quit without killing sessions
 			return m, tea.Quit
 		}
-		m.mode = modeHome
-		m.homeNotice = ""
-		return m, nil
+		if m.mode == modeNewTool || m.mode == modeKillTool {
+			m.mode = modeHome
+			m.homeNotice = ""
+			return m, nil
+		}
 	case "esc":
 		if m.mode != modeHome {
 			m.mode = modeHome
@@ -443,6 +445,11 @@ func (m model) updateHome(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 	case modePickAttach:
+		if key == "x" {
+			m.mode = modeHome
+			m.homeNotice = ""
+			return m, nil
+		}
 		target, ok := m.pickerTargets[key]
 		if !ok {
 			m.homeNotice = fmt.Sprintf("Unknown target %q.", key)
@@ -450,6 +457,11 @@ func (m model) updateHome(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		return m.startAndAttachSession(target, "")
 	case modePickKill:
+		if key == "x" {
+			m.mode = modeHome
+			m.homeNotice = ""
+			return m, nil
+		}
 		target, ok := m.pickerTargets[key]
 		if !ok {
 			m.homeNotice = fmt.Sprintf("Unknown target %q.", key)
@@ -605,7 +617,7 @@ func (m model) viewHome() string {
 			}
 			lines = append(lines, fmt.Sprintf("%s %s %s %s", keyStyle.Render("("+k+")"), name, status, repoNameStyle.Render(repo)))
 		}
-		lines = append(lines, fmt.Sprintf("%s cancel", keyStyle.Render("d")))
+		lines = append(lines, fmt.Sprintf("%s cancel", keyStyle.Render("x")))
 	default:
 		claude := m.runningToolSessions("claude")
 		codex := m.runningToolSessions("codex")

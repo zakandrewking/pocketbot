@@ -136,6 +136,36 @@ func TestEscCancelsPickerMode(t *testing.T) {
 	}
 }
 
+func TestXCancelsAttachPickerMode(t *testing.T) {
+	m := model{
+		config:      config.DefaultConfig(),
+		sessions:    map[string]*tmux.Session{},
+		bindings:    map[string]commandBinding{},
+		windowWidth: 80,
+		viewState:   viewHome,
+		mode:        modePickAttach,
+		pickerTool:  "claude",
+		pickerTargets: map[string]string{
+			"a": "claude-1",
+		},
+	}
+
+	updatedModel, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("x")})
+	m, ok := updatedModel.(model)
+	if !ok {
+		t.Fatal("Update should return a model")
+	}
+	if cmd != nil {
+		t.Fatal("x in attach picker should not quit")
+	}
+	if m.mode != modeHome {
+		t.Fatal("x should cancel attach picker and return home")
+	}
+	if m.shouldAttach {
+		t.Fatal("x cancel should not trigger attach")
+	}
+}
+
 func TestViewRendersWelcomeMessage(t *testing.T) {
 	m := initialModel()
 	view := m.View()
