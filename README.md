@@ -5,6 +5,7 @@ A lightweight session manager for terminal workflows. Manage Claude Code and cus
 ## Features
 
 - **Claude Code Integration**: Quick access to Claude Code sessions with `c`
+- **Codex CLI Integration**: Quick access to Codex CLI sessions with `x`
 - **Custom Sessions**: Configure any command (dev servers, logs, etc.) with custom keybindings
 - **Activity Monitoring**: See if sessions are active or idle in real-time
 - **Detach/Attach**: Like tmux, but simpler - press Ctrl+D to detach, press key to reattach
@@ -24,6 +25,7 @@ pb
 
 **Default Usage:**
 - Press `c` to start/attach to Claude Code
+- Press `x` to start/attach to Codex CLI
 - While attached, press Ctrl+D to detach (returns to pocketbot)
 - Press Ctrl+C to quit pocketbot
 
@@ -36,6 +38,12 @@ Create `~/.config/pocketbot/config.yaml` to customize sessions:
 claude:
   command: "claude --continue"
   key: "c"
+  enabled: true
+
+# Codex (default, can be disabled)
+codex:
+  command: "codex"
+  key: "x"
   enabled: true
 
 # Add custom sessions
@@ -56,6 +64,7 @@ See [config.example.yaml](config.example.yaml) for more examples.
 🤖 Welcome to PocketBot!
 
 claude: ● active [c]
+codex: ○ not running [x]
 dev-server: ○ not running [d]
 logs: ● idle [l]
 

@@ -18,6 +18,15 @@ func TestDefaultConfig(t *testing.T) {
 	if !cfg.Claude.Enabled {
 		t.Error("Claude should be enabled by default")
 	}
+	if cfg.Codex.Command != "codex" {
+		t.Errorf("Expected default codex command, got %q", cfg.Codex.Command)
+	}
+	if cfg.Codex.Key != "x" {
+		t.Errorf("Expected default codex key 'x', got %q", cfg.Codex.Key)
+	}
+	if !cfg.Codex.Enabled {
+		t.Error("Codex should be enabled by default")
+	}
 	if len(cfg.Sessions) != 0 {
 		t.Errorf("Expected no custom sessions by default, got %d", len(cfg.Sessions))
 	}
@@ -38,6 +47,9 @@ func TestLoadDefaultWhenNoFile(t *testing.T) {
 	if cfg.Claude.Command != "claude --continue --permission-mode acceptEdits" {
 		t.Error("Should return default config when file doesn't exist")
 	}
+	if cfg.Codex.Command != "codex" || cfg.Codex.Key != "x" || !cfg.Codex.Enabled {
+		t.Error("Should include default codex config when file doesn't exist")
+	}
 }
 
 func TestLoadValidConfig(t *testing.T) {
@@ -49,6 +61,11 @@ func TestLoadValidConfig(t *testing.T) {
 claude:
   command: "claude --continue"
   key: "c"
+  enabled: true
+
+codex:
+  command: "codex --model gpt-5"
+  key: "x"
   enabled: true
 
 sessions:
@@ -76,12 +93,53 @@ sessions:
 	if len(cfg.Sessions) != 2 {
 		t.Errorf("Expected 2 sessions, got %d", len(cfg.Sessions))
 	}
+	if cfg.Codex.Command != "codex --model gpt-5" {
+		t.Errorf("Expected codex command to be loaded, got %q", cfg.Codex.Command)
+	}
+	if cfg.Codex.Key != "x" {
+		t.Errorf("Expected codex key 'x', got %q", cfg.Codex.Key)
+	}
 
 	if cfg.Sessions[0].Name != "dev-server" {
 		t.Errorf("Expected session name 'dev-server', got %q", cfg.Sessions[0].Name)
 	}
 	if cfg.Sessions[0].Key != "d" {
 		t.Errorf("Expected key 'd', got %q", cfg.Sessions[0].Key)
+	}
+}
+
+func TestLoadValidConfigCodexDisabled(t *testing.T) {
+	tmpDir := t.TempDir()
+	configDir := filepath.Join(tmpDir, ".config", "pocketbot")
+	os.MkdirAll(configDir, 0755)
+
+	configContent := `
+claude:
+  command: "claude --continue"
+  key: "c"
+  enabled: true
+
+codex:
+  command: "codex"
+  key: "x"
+  enabled: false
+`
+	configPath := filepath.Join(configDir, "config.yaml")
+	if err := os.WriteFile(configPath, []byte(configContent), 0644); err != nil {
+		t.Fatalf("Failed to write test config: %v", err)
+	}
+
+	origHome := os.Getenv("HOME")
+	os.Setenv("HOME", tmpDir)
+	defer os.Setenv("HOME", origHome)
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Failed to load config: %v", err)
+	}
+
+	if cfg.Codex.Enabled {
+		t.Error("Expected codex to remain disabled when explicitly set to false")
 	}
 }
 
@@ -92,8 +150,13 @@ func TestValidateDuplicateKeys(t *testing.T) {
 			Key:     "c",
 			Enabled: true,
 		},
+		Codex: CodexConfig{
+			Command: "codex",
+			Key:     "x",
+			Enabled: true,
+		},
 		Sessions: []SessionConfig{
-			{Name: "test", Command: "echo test", Key: "c"}, // Duplicate key!
+			{Name: "test", Command: "echo test", Key: "x"}, // Duplicate key with codex
 		},
 	}
 
@@ -135,6 +198,7 @@ func TestValidateMissingFields(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			cfg := &Config{
 				Claude:   ClaudeConfig{Enabled: false},
+				Codex:    CodexConfig{Enabled: false},
 				Sessions: []SessionConfig{tt.session},
 			}
 			err := cfg.Validate()
@@ -152,6 +216,11 @@ func TestAllSessions(t *testing.T) {
 			Key:     "c",
 			Enabled: true,
 		},
+		Codex: CodexConfig{
+			Command: "codex",
+			Key:     "x",
+			Enabled: true,
+		},
 		Sessions: []SessionConfig{
 			{Name: "test1", Command: "test1", Key: "t"},
 			{Name: "test2", Command: "test2", Key: "u"},
@@ -159,12 +228,15 @@ func TestAllSessions(t *testing.T) {
 	}
 
 	all := cfg.AllSessions()
-	if len(all) != 3 {
-		t.Errorf("Expected 3 sessions (claude + 2 custom), got %d", len(all))
+	if len(all) != 4 {
+		t.Errorf("Expected 4 sessions (claude + codex + 2 custom), got %d", len(all))
 	}
 
 	if all[0].Name != "claude" {
 		t.Error("First session should be claude")
+	}
+	if all[1].Name != "codex" {
+		t.Error("Second session should be codex")
 	}
 }
 
@@ -173,6 +245,11 @@ func TestAllSessionsClaudeDisabled(t *testing.T) {
 		Claude: ClaudeConfig{
 			Command: "claude --continue",
 			Key:     "c",
+			Enabled: false,
+		},
+		Codex: CodexConfig{
+			Command: "codex",
+			Key:     "x",
 			Enabled: false,
 		},
 		Sessions: []SessionConfig{

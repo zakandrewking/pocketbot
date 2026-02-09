@@ -11,11 +11,19 @@ import (
 // Config represents the pocketbot configuration
 type Config struct {
 	Claude   ClaudeConfig    `yaml:"claude"`
+	Codex    CodexConfig     `yaml:"codex"`
 	Sessions []SessionConfig `yaml:"sessions"`
 }
 
 // ClaudeConfig represents the Claude session configuration
 type ClaudeConfig struct {
+	Command string `yaml:"command"`
+	Key     string `yaml:"key"`
+	Enabled bool   `yaml:"enabled"`
+}
+
+// CodexConfig represents the Codex session configuration
+type CodexConfig struct {
 	Command string `yaml:"command"`
 	Key     string `yaml:"key"`
 	Enabled bool   `yaml:"enabled"`
@@ -34,6 +42,11 @@ func DefaultConfig() *Config {
 		Claude: ClaudeConfig{
 			Command: "claude --continue --permission-mode acceptEdits",
 			Key:     "c",
+			Enabled: true,
+		},
+		Codex: CodexConfig{
+			Command: "codex",
+			Key:     "x",
 			Enabled: true,
 		},
 		Sessions: []SessionConfig{},
@@ -69,6 +82,19 @@ func Load() (*Config, error) {
 	}
 
 	// Parse YAML
+	var raw map[string]any
+	if err := yaml.Unmarshal(data, &raw); err != nil {
+		return nil, fmt.Errorf("failed to parse config: %w", err)
+	}
+
+	_, hasCodexBlock := raw["codex"]
+	hasCodexEnabled := false
+	if hasCodexBlock {
+		if codexMap, ok := raw["codex"].(map[string]any); ok {
+			_, hasCodexEnabled = codexMap["enabled"]
+		}
+	}
+
 	var cfg Config
 	if err := yaml.Unmarshal(data, &cfg); err != nil {
 		return nil, fmt.Errorf("failed to parse config: %w", err)
@@ -80,6 +106,19 @@ func Load() (*Config, error) {
 	}
 	if cfg.Claude.Key == "" {
 		cfg.Claude.Key = "c"
+	}
+	if !hasCodexBlock {
+		cfg.Codex = DefaultConfig().Codex
+	} else {
+		if cfg.Codex.Command == "" {
+			cfg.Codex.Command = "codex"
+		}
+		if cfg.Codex.Key == "" {
+			cfg.Codex.Key = "x"
+		}
+		if !hasCodexEnabled {
+			cfg.Codex.Enabled = true
+		}
 	}
 
 	// Validate
@@ -97,6 +136,12 @@ func (c *Config) Validate() error {
 
 	if c.Claude.Enabled {
 		keys[c.Claude.Key] = "claude"
+	}
+	if c.Codex.Enabled {
+		if existing, ok := keys[c.Codex.Key]; ok {
+			return fmt.Errorf("duplicate key %q used by %q and %q", c.Codex.Key, existing, "codex")
+		}
+		keys[c.Codex.Key] = "codex"
 	}
 
 	for _, session := range c.Sessions {
@@ -129,6 +174,13 @@ func (c *Config) AllSessions() []SessionConfig {
 			Name:    "claude",
 			Command: c.Claude.Command,
 			Key:     c.Claude.Key,
+		})
+	}
+	if c.Codex.Enabled {
+		sessions = append(sessions, SessionConfig{
+			Name:    "codex",
+			Command: c.Codex.Command,
+			Key:     c.Codex.Key,
 		})
 	}
 

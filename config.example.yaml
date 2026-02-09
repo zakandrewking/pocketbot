@@ -7,6 +7,12 @@ claude:
   key: "c"
   enabled: true
 
+# Codex session (default)
+codex:
+  command: "codex"
+  key: "x"
+  enabled: true
+
 # Custom sessions
 sessions:
   # Development server

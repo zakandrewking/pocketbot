@@ -55,6 +55,84 @@ func TestOtherKeysDoNotQuit(t *testing.T) {
 	}
 }
 
+func TestCtrlXEntersKillPrefixMode(t *testing.T) {
+	m := model{
+		config:    config.DefaultConfig(),
+		sessions:  map[string]*tmux.Session{},
+		bindings:  map[string]commandBinding{},
+		viewState: viewHome,
+	}
+
+	updatedModel, cmd := m.Update(tea.KeyMsg{Type: tea.KeyCtrlX})
+	m, ok := updatedModel.(model)
+	if !ok {
+		t.Fatal("Update should return a model")
+	}
+	if cmd != nil {
+		t.Fatal("Ctrl+X should not quit")
+	}
+	if !m.killPrefixMode {
+		t.Fatal("Ctrl+X should enable kill prefix mode")
+	}
+	if !contains(m.homeNotice, "Kill session") {
+		t.Fatalf("expected kill prompt notice, got %q", m.homeNotice)
+	}
+}
+
+func TestKillPrefixEscCancels(t *testing.T) {
+	m := model{
+		config:          config.DefaultConfig(),
+		sessions:        map[string]*tmux.Session{},
+		bindings:        map[string]commandBinding{},
+		viewState:       viewHome,
+		killPrefixMode:  true,
+		homeNotice:      "Kill session: c=claude, x=codex (Esc to cancel)",
+	}
+
+	updatedModel, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	m, ok := updatedModel.(model)
+	if !ok {
+		t.Fatal("Update should return a model")
+	}
+	if cmd != nil {
+		t.Fatal("Esc in kill prefix should not quit")
+	}
+	if m.killPrefixMode {
+		t.Fatal("Esc should cancel kill prefix mode")
+	}
+	if m.homeNotice != "" {
+		t.Fatalf("expected notice to clear, got %q", m.homeNotice)
+	}
+}
+
+func TestKillPrefixStopsConfiguredTargetWithoutAttach(t *testing.T) {
+	m := model{
+		config:         config.DefaultConfig(),
+		sessions:       map[string]*tmux.Session{},
+		bindings:       map[string]commandBinding{},
+		viewState:      viewHome,
+		killPrefixMode: true,
+	}
+
+	updatedModel, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("x")})
+	m, ok := updatedModel.(model)
+	if !ok {
+		t.Fatal("Update should return a model")
+	}
+	if cmd != nil {
+		t.Fatal("Kill-prefix subcommand should not quit")
+	}
+	if m.killPrefixMode {
+		t.Fatal("Kill-prefix mode should be consumed after subcommand")
+	}
+	if m.shouldAttach {
+		t.Fatal("Kill-prefix subcommand should not trigger attach")
+	}
+	if !contains(m.homeNotice, "not configured") {
+		t.Fatalf("expected missing-session notice, got %q", m.homeNotice)
+	}
+}
+
 func TestViewRendersWelcomeMessage(t *testing.T) {
 	m := initialModel()
 	view := m.View()

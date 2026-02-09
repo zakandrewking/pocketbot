@@ -42,6 +42,7 @@ type model struct {
 	shouldAttach    bool
 	sessionToAttach string // Name of session to attach to
 	homeNotice      string
+	killPrefixMode  bool
 	getwd           func() (string, error)
 }
 
@@ -190,6 +191,27 @@ func (m model) updateHome(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "d":
 		// Quit without killing sessions
 		return m, tea.Quit
+	case "ctrl+x":
+		// Enter kill-prefix mode: next key selects the session to stop.
+		m.killPrefixMode = true
+		m.homeNotice = "Kill session: c=claude, x=codex (Esc to cancel)"
+		return m, nil
+	}
+
+	if m.killPrefixMode {
+		m.killPrefixMode = false
+		switch key {
+		case "esc":
+			m.homeNotice = ""
+			return m, nil
+		case "c":
+			return m.stopSession("claude"), nil
+		case "x":
+			return m.stopSession("codex"), nil
+		default:
+			m.homeNotice = fmt.Sprintf("Unknown kill target %q. Use c or x.", key)
+			return m, nil
+		}
 	}
 
 	// Check if key matches any configured session
@@ -228,6 +250,28 @@ func (m model) updateHome(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	}
 
 	return m, nil
+}
+
+func (m model) stopSession(name string) model {
+	tmuxSess, exists := m.sessions[name]
+	if !exists {
+		m.homeNotice = fmt.Sprintf("%s session is not configured", name)
+		return m
+	}
+
+	if !tmuxSess.IsRunning() {
+		m.homeNotice = fmt.Sprintf("%s session is not running", name)
+		return m
+	}
+
+	if err := tmuxSess.Stop(); err != nil {
+		m.homeNotice = fmt.Sprintf("failed to stop %s: %v", name, err)
+		return m
+	}
+
+	m.refreshBindings()
+	m.homeNotice = fmt.Sprintf("stopped %s session", name)
+	return m
 }
 
 func (m model) updateAttached(_ tea.KeyMsg) (tea.Model, tea.Cmd) {
@@ -325,7 +369,11 @@ func (m model) viewHome() string {
 	}
 
 	// Instructions
-	instructions := instructionStyle.Render("Ctrl+C to kill all & quit • d to quit")
+	instructions := instructionStyle.Render("Ctrl+C to kill all & quit • Ctrl+X then c/x to kill one • d to quit")
+
+	if m.killPrefixMode {
+		instructions = warningStyle.Render("Kill session: c=claude, x=codex (Esc to cancel)")
+	}
 
 	notice := ""
 	if m.homeNotice != "" {
@@ -495,6 +543,8 @@ Usage:
 Interactive mode keybindings:
   c               Attach to claude session
   x               Attach to codex session
+  Ctrl+X, then c  Kill claude session
+  Ctrl+X, then x  Kill codex session
   Ctrl+D          Detach from session (back to pb)
   d               Quit pb (sessions keep running)
   Ctrl+C          Kill all sessions and quit
