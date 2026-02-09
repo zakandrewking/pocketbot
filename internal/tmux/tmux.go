@@ -13,6 +13,12 @@ import (
 // IdleTimeout is how long without changes before marking session as idle
 const IdleTimeout = 5 * time.Second
 
+const (
+	activePollInterval       = 750 * time.Millisecond
+	pendingActivityPollDelay = 250 * time.Millisecond
+	activityConfirmWindow    = 500 * time.Millisecond
+)
+
 // getSocketName returns the tmux socket name for the current nesting level
 func getSocketName() string {
 	level := os.Getenv("PB_LEVEL")
@@ -168,6 +174,7 @@ type Session struct {
 	lastCapture  string
 	lastActivity time.Time
 	nextPollAt   time.Time
+	pendingSince time.Time
 }
 
 // NewSession creates a new tmux session wrapper
@@ -244,14 +251,33 @@ func (s *Session) UpdateActivity() bool {
 		return now.Sub(s.lastActivity) < IdleTimeout
 	}
 
-	// Check if content changed
-	if current != s.lastCapture {
+	// Baseline capture avoids treating initial pane snapshot as activity.
+	if s.lastCapture == "" {
 		s.lastCapture = current
-		s.lastActivity = now
-		s.nextPollAt = now.Add(1 * time.Second)
-		return true
+		s.pendingSince = time.Time{}
+		s.nextPollAt = now.Add(activePollInterval)
+		return now.Sub(s.lastActivity) < IdleTimeout
 	}
 
+	// Check if content changed.
+	if current != s.lastCapture {
+		if s.pendingSince.IsZero() {
+			s.pendingSince = now
+			s.nextPollAt = now.Add(pendingActivityPollDelay)
+			return now.Sub(s.lastActivity) < IdleTimeout
+		}
+		if now.Sub(s.pendingSince) >= activityConfirmWindow {
+			s.lastCapture = current
+			s.lastActivity = now
+			s.pendingSince = time.Time{}
+			s.nextPollAt = now.Add(activePollInterval)
+			return true
+		}
+		s.nextPollAt = now.Add(pendingActivityPollDelay)
+		return now.Sub(s.lastActivity) < IdleTimeout
+	}
+
+	s.pendingSince = time.Time{}
 	s.nextPollAt = now.Add(nextActivityPollInterval(now.Sub(s.lastActivity)))
 
 	// Content hasn't changed - check if idle timeout exceeded
