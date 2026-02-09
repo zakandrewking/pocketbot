@@ -65,5 +65,6 @@ Then run `pb`, press `t` to run tests in tmux, `Ctrl+D` to detach, etc. This cre
 - It's OK to push straight to main if changes are tested
 - Always commit & push working improvements
 - Always work in small testable steps (unit tests, integration tests, or manual testing)
+- **All new features require tests** - either unit tests, integration tests, or clear manual testing steps
 - For larger work, create a markdown project plan before beginning
 - Track bugs in a committed markdown file (BUGS.md)
