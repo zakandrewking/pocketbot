@@ -194,6 +194,7 @@ func TestZEntersDirJumpMode(t *testing.T) {
 		windowWidth: 80,
 		viewState:   viewHome,
 		mode:        modeHome,
+		hasFasder:   true,
 	}
 
 	updatedModel, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("z")})
@@ -209,6 +210,33 @@ func TestZEntersDirJumpMode(t *testing.T) {
 	}
 	if !contains(m.View(), "query:") {
 		t.Fatal("dir-jump view should render query line")
+	}
+}
+
+func TestZShowsHelpfulNoticeWhenFasderMissing(t *testing.T) {
+	m := model{
+		config:      config.DefaultConfig(),
+		sessions:    map[string]*tmux.Session{},
+		bindings:    map[string]commandBinding{},
+		windowWidth: 80,
+		viewState:   viewHome,
+		mode:        modeHome,
+		hasFasder:   false,
+	}
+
+	updatedModel, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("z")})
+	m, ok := updatedModel.(model)
+	if !ok {
+		t.Fatal("Update should return a model")
+	}
+	if cmd != nil {
+		t.Fatal("z without fasder should not quit")
+	}
+	if m.mode != modeHome {
+		t.Fatal("z without fasder should stay on home mode")
+	}
+	if !contains(m.homeNotice, "fasder not found") {
+		t.Fatalf("expected missing-fasder notice, got %q", m.homeNotice)
 	}
 }
 

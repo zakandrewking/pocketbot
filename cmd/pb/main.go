@@ -60,6 +60,7 @@ type model struct {
 	sessionToAttach string // Name of session to attach to
 	homeNotice      string
 	dirQuery        string
+	hasFasder       bool
 	getwd           func() (string, error)
 	chdir           func(string) error
 	lookupDir       func(string) (string, error)
@@ -106,6 +107,7 @@ func initialModel() model {
 		getwd:         os.Getwd,
 		chdir:         os.Chdir,
 		lookupDir:     lookupDirectoryWithFasder,
+		hasFasder:     fasderAvailable(),
 	}
 }
 
@@ -303,6 +305,19 @@ func lookupDirectoryWithFasder(query string) (string, error) {
 	return strings.TrimSpace(lines[0]), nil
 }
 
+func fasderAvailable() bool {
+	_, err := exec.LookPath("fasder")
+	return err == nil
+}
+
+func isFasderMissingError(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := err.Error()
+	return strings.Contains(msg, `exec: "fasder"`) || strings.Contains(msg, "executable file not found")
+}
+
 func fallbackCommand(tool, command string) string {
 	switch tool {
 	case "claude":
@@ -493,6 +508,12 @@ func (m model) updateHome(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			}
 			target, err := lookup(m.dirQuery)
 			if err != nil {
+				if isFasderMissingError(err) {
+					m.homeNotice = "fasder not found; install fasder to use z"
+					m.mode = modeHome
+					m.dirQuery = ""
+					return m, nil
+				}
 				m.homeNotice = fmt.Sprintf("fasder lookup failed: %v", err)
 				return m, nil
 			}
@@ -574,6 +595,10 @@ func (m model) updateHome(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "u":
 		return m.handleToolAttach("cursor")
 	case "z":
+		if !m.hasFasder {
+			m.homeNotice = "fasder not found; install fasder to use z"
+			return m, nil
+		}
 		m.mode = modeDirJump
 		m.homeNotice = ""
 		m.dirQuery = ""
