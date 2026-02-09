@@ -67,6 +67,10 @@ func CreateSession(name, command string) error {
 	if err := cmd("set-option", "-t", name, "@pb_cwd", cwd).Run(); err != nil {
 		// Non-fatal - just means we can't check directory later
 	}
+	// Store which configured command this session belongs to.
+	if err := cmd("set-option", "-t", name, "@pb_command", name).Run(); err != nil {
+		// Non-fatal - binding can still fall back to session name.
+	}
 
 	// Hide status bar to save screen space
 	if err := cmd("set-option", "-t", name, "status", "off").Run(); err != nil {
@@ -128,6 +132,15 @@ func CapturePane(sessionName string) (string, error) {
 // GetSessionCwd returns the working directory where a session was launched
 func GetSessionCwd(sessionName string) string {
 	out, err := cmd("show-options", "-t", sessionName, "-v", "@pb_cwd").Output()
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(out))
+}
+
+// GetSessionCommand returns the configured command binding for a session.
+func GetSessionCommand(sessionName string) string {
+	out, err := cmd("show-options", "-t", sessionName, "-v", "@pb_command").Output()
 	if err != nil {
 		return ""
 	}

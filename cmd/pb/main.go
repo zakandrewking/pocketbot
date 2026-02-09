@@ -27,12 +27,22 @@ func tickCmd() tea.Msg {
 	return tickMsg(time.Now())
 }
 
+type commandBinding struct {
+	SessionName string
+	Cwd         string
+	Running     bool
+	LastSeen    time.Time
+}
+
 type model struct {
 	config          *config.Config
 	sessions        map[string]*tmux.Session
+	bindings        map[string]commandBinding
 	viewState       viewState
 	shouldAttach    bool
 	sessionToAttach string // Name of session to attach to
+	homeNotice      string
+	getwd           func() (string, error)
 }
 
 func initialModel() model {
@@ -63,7 +73,54 @@ func initialModel() model {
 	return model{
 		config:    cfg,
 		sessions:  sessions,
+		bindings:  make(map[string]commandBinding),
 		viewState: viewHome,
+		getwd:     os.Getwd,
+	}
+}
+
+func (m *model) currentDir() string {
+	if m.getwd == nil {
+		cwd, _ := os.Getwd()
+		return cwd
+	}
+	cwd, err := m.getwd()
+	if err != nil {
+		return ""
+	}
+	return cwd
+}
+
+func (m *model) refreshBindings() {
+	if m.bindings == nil {
+		m.bindings = make(map[string]commandBinding)
+	}
+
+	live := make(map[string]bool)
+	for _, sess := range m.config.AllSessions() {
+		tmuxSess, exists := m.sessions[sess.Name]
+		if !exists || !tmuxSess.IsRunning() {
+			continue
+		}
+
+		commandName := tmux.GetSessionCommand(sess.Name)
+		if commandName == "" {
+			commandName = sess.Name
+		}
+
+		m.bindings[commandName] = commandBinding{
+			SessionName: sess.Name,
+			Cwd:         tmux.GetSessionCwd(sess.Name),
+			Running:     true,
+			LastSeen:    time.Now(),
+		}
+		live[commandName] = true
+	}
+
+	for commandName := range m.bindings {
+		if !live[commandName] {
+			delete(m.bindings, commandName)
+		}
 	}
 }
 
@@ -111,6 +168,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m.updateAttached(msg)
 		}
 	case tickMsg:
+		m.refreshBindings()
 		// Periodic update to refresh activity status
 		for _, sess := range m.sessions {
 			sess.UpdateActivity()
@@ -122,6 +180,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 func (m model) updateHome(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	key := msg.String()
+	m.refreshBindings()
 
 	switch key {
 	case "ctrl+c":
@@ -142,14 +201,25 @@ func (m model) updateHome(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				continue
 			}
 
-			// Start session if not running
-			if !tmuxSess.IsRunning() {
-				if err := tmuxSess.Start(); err != nil {
-					// Error starting session, skip
-					continue
+			// Enforce directory binding when session is already running.
+			if binding, ok := m.bindings[sess.Name]; ok && binding.Running {
+				currentCwd := m.currentDir()
+				if binding.Cwd != "" && currentCwd != "" && binding.Cwd != currentCwd {
+					m.homeNotice = fmt.Sprintf("%s is bound to %s (current: %s)", sess.Name, binding.Cwd, currentCwd)
+					return m, nil
 				}
 			}
 
+			// Start session if not running
+			if !tmuxSess.IsRunning() {
+				if err := tmuxSess.Start(); err != nil {
+					m.homeNotice = fmt.Sprintf("failed to start %s: %v", sess.Name, err)
+					return m, nil
+				}
+			}
+
+			m.refreshBindings()
+			m.homeNotice = ""
 			// Signal that we want to attach to this session
 			m.shouldAttach = true
 			m.sessionToAttach = sess.Name
@@ -178,6 +248,8 @@ func (m model) View() string {
 }
 
 func (m model) viewHome() string {
+	m.refreshBindings()
+
 	titleStyle := lipgloss.NewStyle().
 		Bold(true).
 		Foreground(lipgloss.Color("#7D56F4")).
@@ -198,6 +270,12 @@ func (m model) viewHome() string {
 		Foreground(lipgloss.Color("#AAAAAA")).
 		Italic(true)
 
+	bindingStyle := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("#777777"))
+
+	warningStyle := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("#FFCC66"))
+
 	// Show nesting level if we're nested
 	titleText := "🤖 Welcome to PocketBot!"
 	if level := os.Getenv("PB_LEVEL"); level != "" {
@@ -207,6 +285,7 @@ func (m model) viewHome() string {
 
 	// Build status lines for all sessions
 	var sb strings.Builder
+	currentCwd := m.currentDir()
 	for _, sess := range m.config.AllSessions() {
 		tmuxSess, exists := m.sessions[sess.Name]
 		if !exists {
@@ -229,17 +308,31 @@ func (m model) viewHome() string {
 
 		// Format: name (key): status
 		keyStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#5555FF"))
-		line := fmt.Sprintf("%s %s %s\n",
+		bindingText := ""
+		if binding, ok := m.bindings[sess.Name]; ok && binding.Cwd != "" {
+			if currentCwd != "" && binding.Cwd != currentCwd {
+				bindingText = warningStyle.Render(fmt.Sprintf(" [%s: %s]", "bound elsewhere", binding.Cwd))
+			} else {
+				bindingText = bindingStyle.Render(fmt.Sprintf(" [%s]", binding.Cwd))
+			}
+		}
+		line := fmt.Sprintf("%s %s %s%s\n",
 			labelStyle.Render(fmt.Sprintf("%s:", sess.Name)),
 			status,
-			keyStyle.Render(fmt.Sprintf("[%s]", sess.Key)))
+			keyStyle.Render(fmt.Sprintf("[%s]", sess.Key)),
+			bindingText)
 		sb.WriteString(line)
 	}
 
 	// Instructions
 	instructions := instructionStyle.Render("Ctrl+C to kill all & quit • d to quit")
 
-	return fmt.Sprintf("\n%s\n\n%s\n%s\n", title, sb.String(), instructions)
+	notice := ""
+	if m.homeNotice != "" {
+		notice = warningStyle.Render(m.homeNotice) + "\n"
+	}
+
+	return fmt.Sprintf("\n%s\n\n%s%s\n%s\n", title, notice, sb.String(), instructions)
 }
 
 func (m model) viewAttached() string {
@@ -401,6 +494,7 @@ Usage:
 
 Interactive mode keybindings:
   c               Attach to claude session
+  x               Attach to codex session
   Ctrl+D          Detach from session (back to pb)
   d               Quit pb (sessions keep running)
   Ctrl+C          Kill all sessions and quit
