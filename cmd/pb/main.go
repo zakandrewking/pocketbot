@@ -38,6 +38,7 @@ type model struct {
 	config          *config.Config
 	sessions        map[string]*tmux.Session
 	bindings        map[string]commandBinding
+	windowWidth     int
 	viewState       viewState
 	shouldAttach    bool
 	sessionToAttach string // Name of session to attach to
@@ -72,11 +73,12 @@ func initialModel() model {
 	}
 
 	return model{
-		config:    cfg,
-		sessions:  sessions,
-		bindings:  make(map[string]commandBinding),
-		viewState: viewHome,
-		getwd:     os.Getwd,
+		config:      cfg,
+		sessions:    sessions,
+		bindings:    make(map[string]commandBinding),
+		windowWidth: 80,
+		viewState:   viewHome,
+		getwd:       os.Getwd,
 	}
 }
 
@@ -175,6 +177,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			sess.UpdateActivity()
 		}
 		return m, tickCmd
+	case tea.WindowSizeMsg:
+		m.windowWidth = msg.Width
+		return m, nil
 	}
 	return m, nil
 }
@@ -194,7 +199,7 @@ func (m model) updateHome(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "ctrl+x":
 		// Enter kill-prefix mode: next key selects the session to stop.
 		m.killPrefixMode = true
-		m.homeNotice = "Kill session: c=claude, x=codex (Esc to cancel)"
+		m.homeNotice = ""
 		return m, nil
 	}
 
@@ -369,10 +374,15 @@ func (m model) viewHome() string {
 	}
 
 	// Instructions
-	instructions := instructionStyle.Render("Ctrl+C to kill all & quit • Ctrl+X then c/x to kill one • d to quit")
+	hintWidth := m.windowWidth - 4
+	if hintWidth < 30 {
+		hintWidth = 30
+	}
+	instructionRenderer := instructionStyle.Copy().Width(hintWidth)
+	instructions := instructionRenderer.Render("Ctrl+C to kill all & quit • Ctrl+X to kill one • d to quit")
 
 	if m.killPrefixMode {
-		instructions = warningStyle.Render("Kill session: c=claude, x=codex (Esc to cancel)")
+		instructions = instructionRenderer.Render("Kill session: c=claude, x=codex (Esc to cancel)")
 	}
 
 	notice := ""

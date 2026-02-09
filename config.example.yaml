@@ -9,7 +9,7 @@ claude:
 
 # Codex session (default)
 codex:
-  command: "codex"
+  command: "codex resume --last"
   key: "x"
   enabled: true
 

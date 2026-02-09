@@ -18,7 +18,7 @@ func TestDefaultConfig(t *testing.T) {
 	if !cfg.Claude.Enabled {
 		t.Error("Claude should be enabled by default")
 	}
-	if cfg.Codex.Command != "codex" {
+	if cfg.Codex.Command != "codex resume --last" {
 		t.Errorf("Expected default codex command, got %q", cfg.Codex.Command)
 	}
 	if cfg.Codex.Key != "x" {
@@ -47,7 +47,7 @@ func TestLoadDefaultWhenNoFile(t *testing.T) {
 	if cfg.Claude.Command != "claude --continue --permission-mode acceptEdits" {
 		t.Error("Should return default config when file doesn't exist")
 	}
-	if cfg.Codex.Command != "codex" || cfg.Codex.Key != "x" || !cfg.Codex.Enabled {
+	if cfg.Codex.Command != "codex resume --last" || cfg.Codex.Key != "x" || !cfg.Codex.Enabled {
 		t.Error("Should include default codex config when file doesn't exist")
 	}
 }
@@ -120,7 +120,7 @@ claude:
   enabled: true
 
 codex:
-  command: "codex"
+  command: "codex resume --last"
   key: "x"
   enabled: false
 `
@@ -151,7 +151,7 @@ func TestValidateDuplicateKeys(t *testing.T) {
 			Enabled: true,
 		},
 		Codex: CodexConfig{
-			Command: "codex",
+			Command: "codex resume --last",
 			Key:     "x",
 			Enabled: true,
 		},
@@ -217,7 +217,7 @@ func TestAllSessions(t *testing.T) {
 			Enabled: true,
 		},
 		Codex: CodexConfig{
-			Command: "codex",
+			Command: "codex resume --last",
 			Key:     "x",
 			Enabled: true,
 		},
@@ -248,7 +248,7 @@ func TestAllSessionsClaudeDisabled(t *testing.T) {
 			Enabled: false,
 		},
 		Codex: CodexConfig{
-			Command: "codex",
+			Command: "codex resume --last",
 			Key:     "x",
 			Enabled: false,
 		},

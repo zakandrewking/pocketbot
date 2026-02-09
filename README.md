@@ -42,7 +42,7 @@ claude:
 
 # Codex (default, can be disabled)
 codex:
-  command: "codex"
+  command: "codex resume --last"
   key: "x"
   enabled: true
 

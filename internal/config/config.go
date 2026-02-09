@@ -45,7 +45,7 @@ func DefaultConfig() *Config {
 			Enabled: true,
 		},
 		Codex: CodexConfig{
-			Command: "codex",
+			Command: "codex resume --last",
 			Key:     "x",
 			Enabled: true,
 		},
@@ -111,7 +111,7 @@ func Load() (*Config, error) {
 		cfg.Codex = DefaultConfig().Codex
 	} else {
 		if cfg.Codex.Command == "" {
-			cfg.Codex.Command = "codex"
+			cfg.Codex.Command = "codex resume --last"
 		}
 		if cfg.Codex.Key == "" {
 			cfg.Codex.Key = "x"

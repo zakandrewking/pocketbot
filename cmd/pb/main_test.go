@@ -57,10 +57,11 @@ func TestOtherKeysDoNotQuit(t *testing.T) {
 
 func TestCtrlXEntersKillPrefixMode(t *testing.T) {
 	m := model{
-		config:    config.DefaultConfig(),
-		sessions:  map[string]*tmux.Session{},
-		bindings:  map[string]commandBinding{},
-		viewState: viewHome,
+		config:      config.DefaultConfig(),
+		sessions:    map[string]*tmux.Session{},
+		bindings:    map[string]commandBinding{},
+		windowWidth: 80,
+		viewState:   viewHome,
 	}
 
 	updatedModel, cmd := m.Update(tea.KeyMsg{Type: tea.KeyCtrlX})
@@ -74,19 +75,23 @@ func TestCtrlXEntersKillPrefixMode(t *testing.T) {
 	if !m.killPrefixMode {
 		t.Fatal("Ctrl+X should enable kill prefix mode")
 	}
-	if !contains(m.homeNotice, "Kill session") {
-		t.Fatalf("expected kill prompt notice, got %q", m.homeNotice)
+	if m.homeNotice != "" {
+		t.Fatalf("expected no notice on kill prefix entry, got %q", m.homeNotice)
+	}
+	if !contains(m.View(), "Kill session: c=claude, x=codex") {
+		t.Fatal("expected kill prompt in instructions after Ctrl+X")
 	}
 }
 
 func TestKillPrefixEscCancels(t *testing.T) {
 	m := model{
-		config:          config.DefaultConfig(),
-		sessions:        map[string]*tmux.Session{},
-		bindings:        map[string]commandBinding{},
-		viewState:       viewHome,
-		killPrefixMode:  true,
-		homeNotice:      "Kill session: c=claude, x=codex (Esc to cancel)",
+		config:         config.DefaultConfig(),
+		sessions:       map[string]*tmux.Session{},
+		bindings:       map[string]commandBinding{},
+		windowWidth:    80,
+		viewState:      viewHome,
+		killPrefixMode: true,
+		homeNotice:     "Kill session: c=claude, x=codex (Esc to cancel)",
 	}
 
 	updatedModel, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEsc})
@@ -110,6 +115,7 @@ func TestKillPrefixStopsConfiguredTargetWithoutAttach(t *testing.T) {
 		config:         config.DefaultConfig(),
 		sessions:       map[string]*tmux.Session{},
 		bindings:       map[string]commandBinding{},
+		windowWidth:    80,
 		viewState:      viewHome,
 		killPrefixMode: true,
 	}
@@ -147,6 +153,24 @@ func TestViewRendersWelcomeMessage(t *testing.T) {
 		if !contains(view, expected) {
 			t.Errorf("View should contain %q, got: %s", expected, view)
 		}
+	}
+}
+
+func TestDefaultInstructionsHideKillTargetsUntilCtrlX(t *testing.T) {
+	m := model{
+		config:      config.DefaultConfig(),
+		sessions:    map[string]*tmux.Session{},
+		bindings:    map[string]commandBinding{},
+		windowWidth: 80,
+		viewState:   viewHome,
+	}
+
+	view := m.View()
+	if !contains(view, "Ctrl+X to kill one") {
+		t.Fatal("expected base instructions to mention Ctrl+X kill shortcut")
+	}
+	if contains(view, "c=claude") || contains(view, "x=codex") {
+		t.Fatal("did not expect c/x kill targets before Ctrl+X is pressed")
 	}
 }
 
