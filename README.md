@@ -18,6 +18,16 @@ It is built for fast, repeatable keyboard control on small screens: single lette
 
 ## Install
 
+Prerequisites:
+
+- `go` (to build/install `pb`)
+- `tmux` (required at runtime)
+- `fasder` (optional, enables `z` directory jump)
+- tool CLIs (optional, only if you use them):
+  - `claude`
+  - `codex`
+  - `agent` (Cursor CLI)
+
 ```bash
 go install github.com/zakandrewking/pocketbot/cmd/pb@latest
 ```
