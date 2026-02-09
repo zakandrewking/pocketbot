@@ -55,43 +55,69 @@ func TestOtherKeysDoNotQuit(t *testing.T) {
 	}
 }
 
-func TestCtrlXEntersKillPrefixMode(t *testing.T) {
+func TestNEntersNewMode(t *testing.T) {
 	m := model{
 		config:      config.DefaultConfig(),
 		sessions:    map[string]*tmux.Session{},
 		bindings:    map[string]commandBinding{},
 		windowWidth: 80,
 		viewState:   viewHome,
+		mode:        modeHome,
 	}
 
-	updatedModel, cmd := m.Update(tea.KeyMsg{Type: tea.KeyCtrlX})
+	updatedModel, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("n")})
 	m, ok := updatedModel.(model)
 	if !ok {
 		t.Fatal("Update should return a model")
 	}
 	if cmd != nil {
-		t.Fatal("Ctrl+X should not quit")
+		t.Fatal("n should not quit")
 	}
-	if !m.killPrefixMode {
-		t.Fatal("Ctrl+X should enable kill prefix mode")
+	if m.mode != modeNewTool {
+		t.Fatal("n should enter new-tool mode")
 	}
 	if m.homeNotice != "" {
-		t.Fatalf("expected no notice on kill prefix entry, got %q", m.homeNotice)
+		t.Fatalf("expected no notice on mode entry, got %q", m.homeNotice)
 	}
-	if !contains(m.View(), "Kill session: c=claude, x=codex") {
-		t.Fatal("expected kill prompt in instructions after Ctrl+X")
+	if !contains(m.View(), "c new claude") {
+		t.Fatal("expected new-tool picker in view")
 	}
 }
 
-func TestKillPrefixEscCancels(t *testing.T) {
+func TestKEntersKillMode(t *testing.T) {
 	m := model{
-		config:         config.DefaultConfig(),
-		sessions:       map[string]*tmux.Session{},
-		bindings:       map[string]commandBinding{},
-		windowWidth:    80,
-		viewState:      viewHome,
-		killPrefixMode: true,
-		homeNotice:     "Kill session: c=claude, x=codex (Esc to cancel)",
+		config:      config.DefaultConfig(),
+		sessions:    map[string]*tmux.Session{},
+		bindings:    map[string]commandBinding{},
+		windowWidth: 80,
+		viewState:   viewHome,
+		mode:        modeHome,
+	}
+
+	updatedModel, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("k")})
+	m, ok := updatedModel.(model)
+	if !ok {
+		t.Fatal("Update should return a model")
+	}
+	if cmd != nil {
+		t.Fatal("k should not quit")
+	}
+	if m.mode != modeKillTool {
+		t.Fatal("k should enter kill-tool mode")
+	}
+	if !contains(m.View(), "c kill claude") {
+		t.Fatal("expected kill-tool picker in view")
+	}
+}
+
+func TestEscCancelsPickerMode(t *testing.T) {
+	m := model{
+		config:      config.DefaultConfig(),
+		sessions:    map[string]*tmux.Session{},
+		bindings:    map[string]commandBinding{},
+		windowWidth: 80,
+		viewState:   viewHome,
+		mode:        modeNewTool,
 	}
 
 	updatedModel, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEsc})
@@ -100,42 +126,13 @@ func TestKillPrefixEscCancels(t *testing.T) {
 		t.Fatal("Update should return a model")
 	}
 	if cmd != nil {
-		t.Fatal("Esc in kill prefix should not quit")
+		t.Fatal("esc in picker mode should not quit")
 	}
-	if m.killPrefixMode {
-		t.Fatal("Esc should cancel kill prefix mode")
+	if m.mode != modeHome {
+		t.Fatal("esc should return to home mode")
 	}
 	if m.homeNotice != "" {
 		t.Fatalf("expected notice to clear, got %q", m.homeNotice)
-	}
-}
-
-func TestKillPrefixStopsConfiguredTargetWithoutAttach(t *testing.T) {
-	m := model{
-		config:         config.DefaultConfig(),
-		sessions:       map[string]*tmux.Session{},
-		bindings:       map[string]commandBinding{},
-		windowWidth:    80,
-		viewState:      viewHome,
-		killPrefixMode: true,
-	}
-
-	updatedModel, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("x")})
-	m, ok := updatedModel.(model)
-	if !ok {
-		t.Fatal("Update should return a model")
-	}
-	if cmd != nil {
-		t.Fatal("Kill-prefix subcommand should not quit")
-	}
-	if m.killPrefixMode {
-		t.Fatal("Kill-prefix mode should be consumed after subcommand")
-	}
-	if m.shouldAttach {
-		t.Fatal("Kill-prefix subcommand should not trigger attach")
-	}
-	if !contains(m.homeNotice, "not configured") {
-		t.Fatalf("expected missing-session notice, got %q", m.homeNotice)
 	}
 }
 
@@ -148,7 +145,7 @@ func TestViewRendersWelcomeMessage(t *testing.T) {
 	}
 
 	// Check that the view contains expected text
-	expectedTexts := []string{"Welcome", "PocketBot", "Ctrl+C"}
+	expectedTexts := []string{"Welcome to PocketBot", "mode: home", "kill-all"}
 	for _, expected := range expectedTexts {
 		if !contains(view, expected) {
 			t.Errorf("View should contain %q, got: %s", expected, view)
@@ -156,21 +153,22 @@ func TestViewRendersWelcomeMessage(t *testing.T) {
 	}
 }
 
-func TestDefaultInstructionsHideKillTargetsUntilCtrlX(t *testing.T) {
+func TestDefaultInstructionsShowMobileShortcuts(t *testing.T) {
 	m := model{
 		config:      config.DefaultConfig(),
 		sessions:    map[string]*tmux.Session{},
 		bindings:    map[string]commandBinding{},
 		windowWidth: 80,
 		viewState:   viewHome,
+		mode:        modeHome,
 	}
 
 	view := m.View()
-	if !contains(view, "Ctrl+X to kill one") {
-		t.Fatal("expected base instructions to mention Ctrl+X kill shortcut")
+	if !contains(view, "new") || !contains(view, "kill-all") {
+		t.Fatal("expected base instructions to mention mobile shortcuts")
 	}
-	if contains(view, "c=claude") || contains(view, "x=codex") {
-		t.Fatal("did not expect c/x kill targets before Ctrl+X is pressed")
+	if contains(view, "Ctrl+X") {
+		t.Fatal("did not expect Ctrl+X hints in mobile keymap")
 	}
 }
 
@@ -240,11 +238,11 @@ func TestHomeViewShowsSessionStatus(t *testing.T) {
 
 	// View without running session
 	view := m.View()
-	if !contains(view, "not running") {
-		t.Error("Should show 'not running' when session is stopped")
+	if !contains(view, "instances: 0") {
+		t.Error("Should show zero instances when no sessions are running")
 	}
-	if contains(view, "● running") {
-		t.Error("Should not show '● running' when session is not running")
+	if !contains(view, "claude") || !contains(view, "codex") || !contains(view, "not running") {
+		t.Error("Should show claude/codex not-running rows when no sessions are active")
 	}
 
 	// Start claude session (default config has 'claude' session)
@@ -263,13 +261,13 @@ func TestHomeViewShowsSessionStatus(t *testing.T) {
 
 	// View with running session
 	view = m.View()
-	// Should show either "● active" or "● idle" when running
-	hasStatus := contains(view, "● active") || contains(view, "● idle")
+	// Should show either "● active" or "○ idle" when running
+	hasStatus := contains(view, "● active") || contains(view, "○ idle")
 	if !hasStatus {
-		t.Error("Should show '● active' or '● idle' when session is running")
+		t.Error("Should show '● active' or '○ idle' when session is running")
 	}
-	if !contains(view, "claude:") {
-		t.Error("Should show 'claude:' label")
+	if !contains(view, "claude") {
+		t.Error("Should show claude row when session is running")
 	}
 }
 

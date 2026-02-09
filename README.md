@@ -1,21 +1,34 @@
 # PocketBot
 
-A lightweight session manager for terminal workflows. Manage Claude Code and custom dev tools with simple keybindings.
+PocketBot (`pb`) is a tmux-backed launcher for Claude, Codex, and other long-running terminal workflows.
 
-## Features
+It is built for fast, repeatable keyboard control on small screens: single letters, letter-pair pickers, and `Ctrl+<letter>` globals.
 
-- **Claude Code Integration**: Quick access to Claude Code sessions with `c`
-- **Codex CLI Integration**: Quick access to Codex CLI sessions with `x`
-- **Custom Sessions**: Configure any command (dev servers, logs, etc.) with custom keybindings
-- **Activity Monitoring**: See if sessions are active or idle in real-time
-- **Detach/Attach**: Like tmux, but simpler - press Ctrl+D to detach, press key to reattach
-- **YAML Configuration**: Simple config file for all your workflows
+## What It Does Well
 
-## Installation
+- Keeps sessions alive in the background (tmux-backed).
+- Lets you detach and reattach quickly (`Ctrl+D` to detach from a session).
+- Supports multiple Claude/Codex instances per machine.
+- Uses a compact 20-line mobile-first home view.
+- Switches views automatically:
+  - fewer than 10 Claude+Codex instances: detailed rows
+  - 10 or more: consolidated summary with drill-down picker
+- Supports custom commands as first-class sessions.
+
+## Install
 
 ```bash
 go install github.com/zakandrewking/pocketbot/cmd/pb@latest
 ```
+
+## Default Keys
+
+- `c`: attach Claude (create if none, picker if multiple)
+- `x`: attach Codex (create if none, picker if multiple)
+- `n`: create new instance, then choose `c` or `x`
+- `k`: kill one instance, then choose `c` or `x` (picker appears if needed)
+- `d`: back or quit UI (sessions keep running)
+- `Ctrl+C`: kill all sessions and quit
 
 ## Quick Start
 
@@ -23,94 +36,48 @@ go install github.com/zakandrewking/pocketbot/cmd/pb@latest
 pb
 ```
 
-**Default Usage:**
-- Press `c` to start/attach to Claude Code
-- Press `x` to start/attach to Codex CLI
-- While attached, press Ctrl+D to detach (returns to pocketbot)
-- Press Ctrl+C to quit pocketbot
+Typical loop:
+
+1. Press `c` or `x` to jump into a coding session.
+2. Press `Ctrl+D` to detach back to `pb`.
+3. Press `n` to spin up another instance for a parallel task.
+4. Press `k` to clean up a specific instance.
 
 ## Configuration
 
-Create `~/.config/pocketbot/config.yaml` to customize sessions:
+Create `~/.config/pocketbot/config.yaml`:
 
 ```yaml
-# Claude (default, can be disabled)
 claude:
-  command: "claude --continue"
+  command: "claude --continue --permission-mode acceptEdits"
   key: "c"
   enabled: true
 
-# Codex (default, can be disabled)
 codex:
   command: "codex resume --last"
   key: "x"
   enabled: true
 
-# Add custom sessions
 sessions:
   - name: "dev-server"
     command: "npm run dev"
-    key: "d"
-
+    key: "v"
   - name: "logs"
     command: "tail -f logs/app.log"
     key: "l"
 ```
 
-See [config.example.yaml](config.example.yaml) for more examples.
+Reserved keys in the default UI: `c`, `x`, `n`, `k`, `d`.
 
-**Session Display:**
-```
-🤖 Welcome to PocketBot!
-
-claude: ● active [c]
-codex: ○ not running [x]
-dev-server: ○ not running [d]
-logs: ● idle [l]
-
-Press key to start/attach • Ctrl+C to quit
-```
+See `config.example.yaml` for more examples.
 
 ## Development
 
-### Run locally
-
 ```bash
 go run cmd/pb/main.go
-```
-
-### Build
-
-```bash
-go build -o pb cmd/pb/main.go
-```
-
-### Install locally
-
-```bash
+go test ./...
 go install ./cmd/pb
 ```
-
-### Live reload with Air
-
-Install Air:
-
-```bash
-go install github.com/air-verse/air@latest
-```
-
-Run with live reload:
-
-```bash
-air --build.cmd "go install ./cmd/pb" --build.bin "/usr/bin/true"
-```
-
-This will automatically rebuild and reinstall `pb` whenever you save changes to the source files.
-
-## Tech Stack
-
-- [Go](https://go.dev/) - Programming language
-- [Bubble Tea](https://github.com/charmbracelet/bubbletea) - Terminal UI framework
 
 ## License
 
