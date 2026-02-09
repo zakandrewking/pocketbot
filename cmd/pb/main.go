@@ -907,10 +907,10 @@ func (m model) viewHome() string {
 			lines = append(lines, m.summaryRow("cursor", cursor))
 		}
 		lines = append(lines,
-			fmt.Sprintf("%s jump-dir   %s new", keyStyle.Render("z"), keyStyle.Render("n")),
+			fmt.Sprintf("%s jump-dir   %s new   %s kill", keyStyle.Render("z"), keyStyle.Render("n"), keyStyle.Render("k")),
 		)
 		if m.hasAnyRunningSessions() {
-			lines = append(lines, fmt.Sprintf("%s kill    %s quit   %s kill-all", keyStyle.Render("k"), keyStyle.Render("d"), keyStyle.Render("^c")))
+			lines = append(lines, fmt.Sprintf("%s quit   %s kill-all", keyStyle.Render("d"), keyStyle.Render("^c")))
 		} else {
 			lines = append(lines, fmt.Sprintf("%s quit    %s kill-all", keyStyle.Render("d"), keyStyle.Render("^c")))
 		}
