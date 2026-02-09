@@ -190,7 +190,7 @@ func alphaKey(i int) string {
 }
 
 func pickerKey(i int) string {
-	chars := "abcefghijklmnopqrstuvwyz" // reserve d and x for non-target controls in picker modes
+	chars := "abcdefghijklmnopqrstuvwxyz"
 	if i < 0 || i >= len(chars) {
 		return ""
 	}
@@ -320,10 +320,10 @@ func (m model) preparePicker(tool string, pickMode uiMode) model {
 	m.pickerTool = tool
 	m.pickerTargets = make(map[string]string)
 	limit := len(targets)
-	maxKeys := len("abcefghijklmnopqrstuvwxyz")
+	maxKeys := len("abcdefghijklmnopqrstuvwxyz")
 	if limit > maxKeys {
 		limit = maxKeys
-		m.homeNotice = "showing first 25 sessions"
+		m.homeNotice = "showing first 26 sessions"
 	} else {
 		m.homeNotice = ""
 	}
@@ -428,36 +428,23 @@ func (m model) updateHome(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		switch key {
 		case "c":
 			return m.createAndAttachTool("claude")
-		case "z":
-			return m.createAndAttachTool("codex")
 		case "x":
-			m.mode = modeHome
-			m.homeNotice = ""
-			return m, nil
+			return m.createAndAttachTool("codex")
 		default:
-			m.homeNotice = fmt.Sprintf("Unknown new target %q. Use c or z.", key)
+			m.homeNotice = fmt.Sprintf("Unknown new target %q. Use c or x.", key)
 			return m, nil
 		}
 	case modeKillTool:
 		switch key {
 		case "c":
 			return m.handleToolKill("claude")
-		case "z":
-			return m.handleToolKill("codex")
 		case "x":
-			m.mode = modeHome
-			m.homeNotice = ""
-			return m, nil
+			return m.handleToolKill("codex")
 		default:
-			m.homeNotice = fmt.Sprintf("Unknown kill target %q. Use c or z.", key)
+			m.homeNotice = fmt.Sprintf("Unknown kill target %q. Use c or x.", key)
 			return m, nil
 		}
 	case modePickAttach:
-		if key == "x" {
-			m.mode = modeHome
-			m.homeNotice = ""
-			return m, nil
-		}
 		target, ok := m.pickerTargets[key]
 		if !ok {
 			m.homeNotice = fmt.Sprintf("Unknown target %q.", key)
@@ -465,11 +452,6 @@ func (m model) updateHome(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		return m.startAndAttachSession(target, "")
 	case modePickKill:
-		if key == "x" {
-			m.mode = modeHome
-			m.homeNotice = ""
-			return m, nil
-		}
 		target, ok := m.pickerTargets[key]
 		if !ok {
 			m.homeNotice = fmt.Sprintf("Unknown target %q.", key)
@@ -588,14 +570,14 @@ func (m model) viewHome() string {
 	case modeNewTool:
 		lines = append(lines,
 			fmt.Sprintf("%s new claude", keyStyle.Render("c")),
-			fmt.Sprintf("%s new codex", keyStyle.Render("z")),
-			fmt.Sprintf("%s cancel", keyStyle.Render("x")),
+			fmt.Sprintf("%s new codex", keyStyle.Render("x")),
+			"esc cancel",
 		)
 	case modeKillTool:
 		lines = append(lines,
 			fmt.Sprintf("%s kill claude", keyStyle.Render("c")),
-			fmt.Sprintf("%s kill codex", keyStyle.Render("z")),
-			fmt.Sprintf("%s cancel", keyStyle.Render("x")),
+			fmt.Sprintf("%s kill codex", keyStyle.Render("x")),
+			"esc cancel",
 		)
 	case modePickAttach, modePickKill:
 		action := "attach"
@@ -625,7 +607,7 @@ func (m model) viewHome() string {
 			}
 			lines = append(lines, fmt.Sprintf("%s %s %s %s", keyStyle.Render("("+k+")"), name, status, repoNameStyle.Render(repo)))
 		}
-		lines = append(lines, fmt.Sprintf("%s cancel", keyStyle.Render("x")))
+		lines = append(lines, "esc cancel")
 	default:
 		claude := m.runningToolSessions("claude")
 		codex := m.runningToolSessions("codex")

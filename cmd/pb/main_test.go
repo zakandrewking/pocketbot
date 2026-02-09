@@ -136,7 +136,7 @@ func TestEscCancelsPickerMode(t *testing.T) {
 	}
 }
 
-func TestXCancelsAttachPickerMode(t *testing.T) {
+func TestEscCancelsAttachPickerMode(t *testing.T) {
 	m := model{
 		config:      config.DefaultConfig(),
 		sessions:    map[string]*tmux.Session{},
@@ -150,45 +150,19 @@ func TestXCancelsAttachPickerMode(t *testing.T) {
 		},
 	}
 
-	updatedModel, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("x")})
+	updatedModel, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEsc})
 	m, ok := updatedModel.(model)
 	if !ok {
 		t.Fatal("Update should return a model")
 	}
 	if cmd != nil {
-		t.Fatal("x in attach picker should not quit")
+		t.Fatal("esc in attach picker should not quit")
 	}
 	if m.mode != modeHome {
-		t.Fatal("x should cancel attach picker and return home")
+		t.Fatal("esc should cancel attach picker and return home")
 	}
 	if m.shouldAttach {
-		t.Fatal("x cancel should not trigger attach")
-	}
-}
-
-func TestXCancelsNewToolMode(t *testing.T) {
-	m := model{
-		config:      config.DefaultConfig(),
-		sessions:    map[string]*tmux.Session{},
-		bindings:    map[string]commandBinding{},
-		windowWidth: 80,
-		viewState:   viewHome,
-		mode:        modeNewTool,
-	}
-
-	updatedModel, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("x")})
-	m, ok := updatedModel.(model)
-	if !ok {
-		t.Fatal("Update should return a model")
-	}
-	if cmd != nil {
-		t.Fatal("x cancel in new mode should not quit")
-	}
-	if m.mode != modeHome {
-		t.Fatal("x should cancel new-tool mode and return home")
-	}
-	if m.shouldAttach {
-		t.Fatal("x cancel should not trigger attach")
+		t.Fatal("esc cancel should not trigger attach")
 	}
 }
 

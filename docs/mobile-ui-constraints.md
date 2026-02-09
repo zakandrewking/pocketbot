@@ -7,3 +7,4 @@
 - When total Claude+Codex instances are fewer than 10, show per-instance status, repo, and key-chord info.
 - When total Claude+Codex instances are 10 or more, show consolidated summary info on home and require drill-down to per-instance lists.
 - Keep messages and hints readable on very small screens (single-column layout).
+- `Escape` is allowed and should be used as the general go-back/cancel keybinding.
