@@ -637,15 +637,35 @@ func (m model) updateHome(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 	case modeKillTool:
+		runningClaude := len(m.runningToolSessions("claude")) > 0
+		runningCodex := len(m.runningToolSessions("codex")) > 0
+		runningCursor := len(m.runningToolSessions("cursor")) > 0
+		if !runningClaude && !runningCodex && !runningCursor {
+			m.mode = modeHome
+			m.homeNotice = "no kill targets are running"
+			return m, nil
+		}
 		switch key {
 		case "c":
+			if !runningClaude {
+				m.homeNotice = "claude is not running"
+				return m, nil
+			}
 			return m.handleToolKill("claude")
 		case "x":
+			if !runningCodex {
+				m.homeNotice = "codex is not running"
+				return m, nil
+			}
 			return m.handleToolKill("codex")
 		case "u":
+			if !runningCursor {
+				m.homeNotice = "cursor is not running"
+				return m, nil
+			}
 			return m.handleToolKill("cursor")
 		default:
-			m.homeNotice = fmt.Sprintf("Unknown kill target %q. Use c, x, or u.", key)
+			m.homeNotice = fmt.Sprintf("Unknown kill target %q.", key)
 			return m, nil
 		}
 	case modePickAttach:
@@ -695,6 +715,10 @@ func (m model) updateHome(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.homeNotice = ""
 		return m, nil
 	case "k":
+		if !m.hasAnyRunningSessions() {
+			m.homeNotice = "no running sessions to kill"
+			return m, nil
+		}
 		m.mode = modeKillTool
 		m.homeNotice = ""
 		return m, nil
@@ -825,12 +849,19 @@ func (m model) viewHome() string {
 			"esc cancel",
 		)
 	case modeKillTool:
-		lines = append(lines,
-			fmt.Sprintf("%s kill claude", keyStyle.Render("c")),
-			fmt.Sprintf("%s kill codex", keyStyle.Render("x")),
-			fmt.Sprintf("%s kill cursor", keyStyle.Render("u")),
-			"esc cancel",
-		)
+		runningClaude := len(m.runningToolSessions("claude")) > 0
+		runningCodex := len(m.runningToolSessions("codex")) > 0
+		runningCursor := len(m.runningToolSessions("cursor")) > 0
+		if runningClaude {
+			lines = append(lines, fmt.Sprintf("%s kill claude", keyStyle.Render("c")))
+		}
+		if runningCodex {
+			lines = append(lines, fmt.Sprintf("%s kill codex", keyStyle.Render("x")))
+		}
+		if runningCursor {
+			lines = append(lines, fmt.Sprintf("%s kill cursor", keyStyle.Render("u")))
+		}
+		lines = append(lines, "esc cancel")
 	case modePickAttach, modePickKill:
 		action := "attach"
 		if m.mode == modePickKill {
@@ -877,8 +908,12 @@ func (m model) viewHome() string {
 		}
 		lines = append(lines,
 			fmt.Sprintf("%s jump-dir   %s new", keyStyle.Render("z"), keyStyle.Render("n")),
-			fmt.Sprintf("%s kill    %s quit   %s kill-all", keyStyle.Render("k"), keyStyle.Render("d"), keyStyle.Render("^c")),
 		)
+		if m.hasAnyRunningSessions() {
+			lines = append(lines, fmt.Sprintf("%s kill    %s quit   %s kill-all", keyStyle.Render("k"), keyStyle.Render("d"), keyStyle.Render("^c")))
+		} else {
+			lines = append(lines, fmt.Sprintf("%s quit    %s kill-all", keyStyle.Render("d"), keyStyle.Render("^c")))
+		}
 	}
 
 	return strings.Join(capLines(lines, 20), "\n") + "\n"
@@ -965,6 +1000,15 @@ func (m model) summaryRow(tool string, names []string) string {
 		activeStyle.Render(fmt.Sprintf("active:%d", active)),
 		metaStyle.Render(fmt.Sprintf("idle:%d", len(names)-active)),
 	)
+}
+
+func (m model) hasAnyRunningSessions() bool {
+	for _, sess := range m.sessions {
+		if sess != nil && sess.IsRunning() {
+			return true
+		}
+	}
+	return false
 }
 
 func capLines(lines []string, max int) []string {

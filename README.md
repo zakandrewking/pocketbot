@@ -90,4 +90,4 @@ go install ./cmd/pb
 
 ## License
 
-MIT
+Apache License 2.0

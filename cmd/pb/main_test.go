@@ -88,14 +88,19 @@ func TestNEntersNewMode(t *testing.T) {
 }
 
 func TestKEntersKillMode(t *testing.T) {
+	cfg := config.DefaultConfig()
 	m := model{
-		config:      config.DefaultConfig(),
-		sessions:    map[string]*tmux.Session{},
+		config:      cfg,
+		sessions:    map[string]*tmux.Session{"codex": tmux.NewSession("codex", cfg.Codex.Command)},
 		bindings:    map[string]commandBinding{},
 		windowWidth: 80,
 		viewState:   viewHome,
 		mode:        modeHome,
 	}
+	if err := m.sessions["codex"].Start(); err != nil {
+		t.Skipf("tmux sessions cannot be started in this environment: %v", err)
+	}
+	defer m.sessions["codex"].Stop()
 
 	updatedModel, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("k")})
 	m, ok := updatedModel.(model)
@@ -108,8 +113,8 @@ func TestKEntersKillMode(t *testing.T) {
 	if m.mode != modeKillTool {
 		t.Fatal("k should enter kill-tool mode")
 	}
-	if !contains(m.View(), "c kill claude") {
-		t.Fatal("expected kill-tool picker in view")
+	if !contains(m.View(), "kill codex") {
+		t.Fatal("expected kill-tool picker to include running target")
 	}
 }
 
@@ -405,8 +410,61 @@ func TestDefaultInstructionsShowMobileShortcuts(t *testing.T) {
 	if !contains(view, "jump-dir") || !contains(view, "new") || !contains(view, "kill-all") {
 		t.Fatal("expected base instructions to mention mobile shortcuts")
 	}
+	if contains(view, "kill    ") {
+		t.Fatal("did not expect kill hotkey hint when no sessions are running")
+	}
 	if contains(view, "Ctrl+X") {
 		t.Fatal("did not expect Ctrl+X hints in mobile keymap")
+	}
+}
+
+func TestKillModeShowsOnlyRunningTargets(t *testing.T) {
+	cfg := config.DefaultConfig()
+	m := model{
+		config:      cfg,
+		sessions:    map[string]*tmux.Session{"codex": tmux.NewSession("codex", cfg.Codex.Command)},
+		bindings:    map[string]commandBinding{},
+		windowWidth: 80,
+		viewState:   viewHome,
+		mode:        modeKillTool,
+	}
+	if err := m.sessions["codex"].Start(); err != nil {
+		t.Skipf("tmux sessions cannot be started in this environment: %v", err)
+	}
+	defer m.sessions["codex"].Stop()
+
+	view := m.View()
+	if !contains(view, "kill codex") {
+		t.Fatal("expected running codex kill option")
+	}
+	if contains(view, "kill claude") || contains(view, "kill cursor") {
+		t.Fatal("did not expect non-running kill options")
+	}
+}
+
+func TestKDoesNotEnterKillModeWhenNothingRunning(t *testing.T) {
+	m := model{
+		config:      config.DefaultConfig(),
+		sessions:    map[string]*tmux.Session{},
+		bindings:    map[string]commandBinding{},
+		windowWidth: 80,
+		viewState:   viewHome,
+		mode:        modeHome,
+	}
+
+	updatedModel, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("k")})
+	m, ok := updatedModel.(model)
+	if !ok {
+		t.Fatal("Update should return a model")
+	}
+	if cmd != nil {
+		t.Fatal("k with nothing running should not quit")
+	}
+	if m.mode != modeHome {
+		t.Fatal("k with nothing running should stay in home mode")
+	}
+	if !contains(m.homeNotice, "no running sessions") {
+		t.Fatalf("expected no-running notice, got %q", m.homeNotice)
 	}
 }
 
