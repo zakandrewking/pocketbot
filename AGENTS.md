@@ -66,6 +66,7 @@ Then run `pb`, press `t` to run tests in tmux, `Ctrl+D` to detach, etc. This cre
 - Each commit should represent one specific piece of work
 - When responding to feedback, prefer amending the relevant prior commit when it keeps history cleaner
 - CLAUDE/AGENTS instruction updates can be committed alongside related code changes
+- Before implementing non-trivial UX/interaction changes, do a brief design pass first: capture proposed keys/states, fallback behavior, and planned tests before coding
 - Wait for explicit confirmation before pushing
 - Always work in small testable steps (unit tests, integration tests, or manual testing)
 - **All new features require tests** - either unit tests, integration tests, or clear manual testing steps

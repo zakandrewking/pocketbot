@@ -61,6 +61,7 @@ type model struct {
 	homeNotice      string
 	dirQuery        string
 	dirSuggestions  []string
+	dirSelection    int
 	hasFasder       bool
 	getwd           func() (string, error)
 	chdir           func(string) error
@@ -332,7 +333,15 @@ func lookupDirectoriesWithFasder(query string) ([]string, error) {
 	if len(dirs) == 0 {
 		return nil, fmt.Errorf("no matching directories")
 	}
+	// fasder list output is oldest/least-relevant first in practice; invert for top-first UX.
+	reverseStrings(dirs)
 	return dirs, nil
+}
+
+func reverseStrings(items []string) {
+	for i, j := 0, len(items)-1; i < j; i, j = i+1, j-1 {
+		items[i], items[j] = items[j], items[i]
+	}
 }
 
 func fasderAvailable() bool {
@@ -354,6 +363,11 @@ func (m *model) refreshDirSuggestions() {
 		suggestions = suggestions[:9]
 	}
 	m.dirSuggestions = suggestions
+	if len(m.dirSuggestions) == 0 {
+		m.dirSelection = 0
+	} else if m.dirSelection >= len(m.dirSuggestions) {
+		m.dirSelection = len(m.dirSuggestions) - 1
+	}
 }
 
 func (m *model) applyDirChange(target string) (model, tea.Cmd) {
@@ -366,10 +380,26 @@ func (m *model) applyDirChange(target string) (model, tea.Cmd) {
 		return *m, nil
 	}
 	m.mode = modeHome
-	m.homeNotice = fmt.Sprintf("changed directory to %s", target)
+	m.homeNotice = ""
 	m.dirQuery = ""
 	m.dirSuggestions = nil
+	m.dirSelection = 0
 	return *m, nil
+}
+
+func (m model) mismatchCountForCurrentDir() int {
+	cwd := m.currentDir()
+	if cwd == "" {
+		return 0
+	}
+	count := 0
+	for _, name := range tmux.ListSessions() {
+		sessionCwd := tmux.GetSessionCwd(name)
+		if sessionCwd != "" && sessionCwd != cwd {
+			count++
+		}
+	}
+	return count
 }
 
 func fallbackCommand(tool, command string) string {
@@ -550,6 +580,7 @@ func (m model) updateHome(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.mode = modeHome
 			m.dirQuery = ""
 			m.dirSuggestions = nil
+			m.dirSelection = 0
 			m.homeNotice = ""
 			return m, nil
 		case tea.KeyEnter:
@@ -560,25 +591,34 @@ func (m model) updateHome(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				m.homeNotice = "no matching directories"
 				return m, nil
 			}
-			return m.applyDirChange(m.dirSuggestions[0])
+			if m.dirSelection < 0 || m.dirSelection >= len(m.dirSuggestions) {
+				m.dirSelection = 0
+			}
+			return m.applyDirChange(m.dirSuggestions[m.dirSelection])
+		case tea.KeyUp:
+			if len(m.dirSuggestions) > 0 {
+				if m.dirSelection <= 0 {
+					m.dirSelection = len(m.dirSuggestions) - 1
+				} else {
+					m.dirSelection--
+				}
+			}
+			return m, nil
+		case tea.KeyDown:
+			if len(m.dirSuggestions) > 0 {
+				m.dirSelection = (m.dirSelection + 1) % len(m.dirSuggestions)
+			}
+			return m, nil
 		case tea.KeyBackspace, tea.KeyDelete:
 			if len(m.dirQuery) > 0 {
 				m.dirQuery = m.dirQuery[:len(m.dirQuery)-1]
 			}
+			m.dirSelection = 0
 			m.refreshDirSuggestions()
 			return m, nil
 		case tea.KeyRunes:
-			input := string(msg.Runes)
-			if len(input) == 1 {
-				letter := strings.ToLower(input)
-				if len(m.dirSuggestions) > 0 {
-					i := int(letter[0] - 'a')
-					if i >= 0 && i < len(m.dirSuggestions) {
-						return m.applyDirChange(m.dirSuggestions[i])
-					}
-				}
-			}
-			m.dirQuery += input
+			m.dirQuery += string(msg.Runes)
+			m.dirSelection = 0
 			m.refreshDirSuggestions()
 			return m, nil
 		default:
@@ -647,6 +687,8 @@ func (m model) updateHome(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.homeNotice = ""
 		m.dirQuery = ""
 		m.dirSuggestions = nil
+		m.dirSelection = 0
+		m.refreshDirSuggestions()
 		return m, nil
 	case "n":
 		m.mode = modeNewTool
@@ -742,20 +784,38 @@ func (m model) viewHome() string {
 	if m.homeNotice != "" {
 		lines = append(lines, alertStyle.Render(m.homeNotice))
 	}
+	if count := m.mismatchCountForCurrentDir(); count > 0 && m.mode == modeHome {
+		lines = append(lines, alertStyle.Render(fmt.Sprintf("%d session(s) running from different directories", count)))
+	}
 
 	switch m.mode {
 	case modeDirJump:
+		jumpTitleStyle := lipgloss.NewStyle().
+			Foreground(lipgloss.Color("#7D56F4")).
+			Bold(true)
+		searchLabelStyle := lipgloss.NewStyle().
+			Foreground(lipgloss.Color("#4DA3FF"))
+		hintStyle := lipgloss.NewStyle().
+			Foreground(lipgloss.Color("#AAAAAA"))
+		selectedStyle := lipgloss.NewStyle().
+			Foreground(lipgloss.Color("#04B575")).
+			Bold(true)
+		suggestionStyle := lipgloss.NewStyle().
+			Foreground(lipgloss.Color("#BBBBBB"))
+
 		lines = append(lines,
-			"z fasder jump",
-			fmt.Sprintf("query: %s", m.dirQuery),
-			"enter top hit   esc cancel",
+			jumpTitleStyle.Render("z fasder jump"),
+			fmt.Sprintf("%s%s", searchLabelStyle.Render("search: "), m.dirQuery),
+			hintStyle.Render("up/down move   enter select   esc cancel"),
 		)
 		for i, suggestion := range m.dirSuggestions {
-			k := alphaKey(i)
-			if k == "" {
+			row := fmt.Sprintf("  %s", suggestion)
+			if i == m.dirSelection {
+				row = fmt.Sprintf("> %s", suggestion)
+				lines = append(lines, selectedStyle.Render(row))
 				continue
 			}
-			lines = append(lines, fmt.Sprintf("(%s) %s", k, suggestion))
+			lines = append(lines, suggestionStyle.Render(row))
 		}
 	case modeNewTool:
 		lines = append(lines,
@@ -816,7 +876,7 @@ func (m model) viewHome() string {
 			lines = append(lines, m.summaryRow("cursor", cursor))
 		}
 		lines = append(lines,
-			fmt.Sprintf("%s new", keyStyle.Render("n")),
+			fmt.Sprintf("%s jump-dir   %s new", keyStyle.Render("z"), keyStyle.Render("n")),
 			fmt.Sprintf("%s kill    %s quit   %s kill-all", keyStyle.Render("k"), keyStyle.Render("d"), keyStyle.Render("^c")),
 		)
 	}

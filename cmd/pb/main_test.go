@@ -208,8 +208,32 @@ func TestZEntersDirJumpMode(t *testing.T) {
 	if m.mode != modeDirJump {
 		t.Fatal("z should enter dir-jump mode")
 	}
-	if !contains(m.View(), "query:") {
-		t.Fatal("dir-jump view should render query line")
+	if !contains(m.View(), "search:") {
+		t.Fatal("dir-jump view should render search line")
+	}
+}
+
+func TestZLoadsSuggestionsWithoutSearchText(t *testing.T) {
+	m := model{
+		config:      config.DefaultConfig(),
+		sessions:    map[string]*tmux.Session{},
+		bindings:    map[string]commandBinding{},
+		windowWidth: 80,
+		viewState:   viewHome,
+		mode:        modeHome,
+		hasFasder:   true,
+		lookupDirs: func(query string) ([]string, error) {
+			if query != "" {
+				t.Fatalf("expected empty search text on z open, got %q", query)
+			}
+			return []string{"/tmp/a", "/tmp/b"}, nil
+		},
+	}
+
+	updatedModel, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("z")})
+	m = updatedModel.(model)
+	if len(m.dirSuggestions) == 0 {
+		t.Fatal("expected initial suggestions to be loaded on z open")
 	}
 }
 
@@ -243,13 +267,14 @@ func TestZShowsHelpfulNoticeWhenFasderMissing(t *testing.T) {
 func TestDirJumpEnterChangesDirectory(t *testing.T) {
 	var changedTo string
 	m := model{
-		config:      config.DefaultConfig(),
-		sessions:    map[string]*tmux.Session{},
-		bindings:    map[string]commandBinding{},
-		windowWidth: 80,
-		viewState:   viewHome,
-		mode:        modeDirJump,
-		dirQuery:    "proj",
+		config:       config.DefaultConfig(),
+		sessions:     map[string]*tmux.Session{},
+		bindings:     map[string]commandBinding{},
+		windowWidth:  80,
+		viewState:    viewHome,
+		mode:         modeDirJump,
+		dirQuery:     "proj",
+		dirSelection: 0,
 		lookupDirs: func(query string) ([]string, error) {
 			if query != "proj" {
 				t.Fatalf("expected query proj, got %q", query)
@@ -276,12 +301,54 @@ func TestDirJumpEnterChangesDirectory(t *testing.T) {
 	if m.mode != modeHome {
 		t.Fatal("dir jump enter should return to home mode")
 	}
-	if !contains(m.homeNotice, "changed directory") {
-		t.Fatalf("expected changed-directory notice, got %q", m.homeNotice)
+	if m.homeNotice != "" {
+		t.Fatalf("expected no notice after directory change, got %q", m.homeNotice)
 	}
 }
 
-func TestDirJumpLetterSelectChangesDirectory(t *testing.T) {
+func TestDirJumpTypingDoesNotSelectSuggestion(t *testing.T) {
+	m := model{
+		config:         config.DefaultConfig(),
+		sessions:       map[string]*tmux.Session{},
+		bindings:       map[string]commandBinding{},
+		windowWidth:    80,
+		viewState:      viewHome,
+		mode:           modeDirJump,
+		dirQuery:       "pro",
+		dirSuggestions: []string{"/tmp/one", "/tmp/two"},
+		lookupDirs: func(query string) ([]string, error) {
+			if query != "prob" {
+				t.Fatalf("expected query to append typed rune, got %q", query)
+			}
+			return []string{"/tmp/three"}, nil
+		},
+	}
+
+	updatedModel, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("b")})
+	m, ok := updatedModel.(model)
+	if !ok {
+		t.Fatal("Update should return a model")
+	}
+	if cmd != nil {
+		t.Fatal("typing in dir jump should not quit")
+	}
+	if m.mode != modeDirJump {
+		t.Fatal("typing should stay in dir jump mode")
+	}
+	if m.dirQuery != "prob" {
+		t.Fatalf("expected updated search text, got %q", m.dirQuery)
+	}
+}
+
+func TestReverseStrings(t *testing.T) {
+	original := []string{"a", "b", "c"}
+	reverseStrings(original)
+	if original[0] != "c" || original[1] != "b" || original[2] != "a" {
+		t.Fatalf("expected reversed order, got %#v", original)
+	}
+}
+
+func TestDirJumpArrowSelectChangesDirectory(t *testing.T) {
 	var changedTo string
 	m := model{
 		config:         config.DefaultConfig(),
@@ -292,22 +359,35 @@ func TestDirJumpLetterSelectChangesDirectory(t *testing.T) {
 		mode:           modeDirJump,
 		dirQuery:       "proj",
 		dirSuggestions: []string{"/tmp/one", "/tmp/two"},
+		dirSelection:   0,
 		chdir:          func(path string) error { changedTo = path; return nil },
 	}
 
-	updatedModel, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("b")})
+	updatedModel, cmd := m.Update(tea.KeyMsg{Type: tea.KeyDown})
 	m, ok := updatedModel.(model)
 	if !ok {
 		t.Fatal("Update should return a model")
 	}
 	if cmd != nil {
-		t.Fatal("dir jump letter select should not quit")
+		t.Fatal("dir jump arrow navigation should not quit")
+	}
+	if m.dirSelection != 1 {
+		t.Fatalf("expected selection index 1, got %d", m.dirSelection)
+	}
+
+	updatedModel, cmd = m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m, ok = updatedModel.(model)
+	if !ok {
+		t.Fatal("Update should return a model")
+	}
+	if cmd != nil {
+		t.Fatal("dir jump enter should not quit")
 	}
 	if changedTo != "/tmp/two" {
 		t.Fatalf("expected chdir to /tmp/two, got %q", changedTo)
 	}
 	if m.mode != modeHome {
-		t.Fatal("letter select should return to home mode")
+		t.Fatal("arrow+enter select should return to home mode")
 	}
 }
 
@@ -322,7 +402,7 @@ func TestDefaultInstructionsShowMobileShortcuts(t *testing.T) {
 	}
 
 	view := m.View()
-	if !contains(view, "new") || !contains(view, "kill-all") {
+	if !contains(view, "jump-dir") || !contains(view, "new") || !contains(view, "kill-all") {
 		t.Fatal("expected base instructions to mention mobile shortcuts")
 	}
 	if contains(view, "Ctrl+X") {

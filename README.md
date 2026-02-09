@@ -27,7 +27,7 @@ go install github.com/zakandrewking/pocketbot/cmd/pb@latest
 - `c`: attach Claude (create if none, picker if multiple)
 - `x`: attach Codex (create if none, picker if multiple)
 - `u`: attach Cursor (create if none, picker if multiple)
-- `z`: directory jump using `fasder` query + Enter
+- `z`: directory jump using `fasder` search + Enter
 - `n`: create new instance, then choose `c`, `x`, or `u`
 - `k`: kill one instance, then choose `c`, `x`, or `u` (picker appears if needed)
 - `d`: back or quit UI (sessions keep running)
