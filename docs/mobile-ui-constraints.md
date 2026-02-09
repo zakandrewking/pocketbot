@@ -8,3 +8,4 @@
 - When total Claude+Codex+Cursor instances are 10 or more, show consolidated summary info on home and require drill-down to per-instance lists.
 - Keep messages and hints readable on very small screens (single-column layout).
 - `Escape` is allowed and should be used as the general go-back/cancel keybinding.
+- Include a dedicated directory-jump shortcut (`z`) for fasder-based navigation.

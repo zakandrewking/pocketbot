@@ -26,6 +26,7 @@ go install github.com/zakandrewking/pocketbot/cmd/pb@latest
 - `c`: attach Claude (create if none, picker if multiple)
 - `x`: attach Codex (create if none, picker if multiple)
 - `u`: attach Cursor (create if none, picker if multiple)
+- `z`: directory jump using `fasder` query + Enter
 - `n`: create new instance, then choose `c`, `x`, or `u`
 - `k`: kill one instance, then choose `c`, `x`, or `u` (picker appears if needed)
 - `d`: back or quit UI (sessions keep running)
@@ -74,7 +75,7 @@ sessions:
     key: "l"
 ```
 
-Reserved keys in the default UI: `c`, `x`, `u`, `n`, `k`, `d`, `Esc`.
+Reserved keys in the default UI: `c`, `x`, `u`, `z`, `n`, `k`, `d`, `Esc`.
 
 See `config.example.yaml` for more examples.
 

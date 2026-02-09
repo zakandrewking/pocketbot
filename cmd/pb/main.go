@@ -30,6 +30,7 @@ const (
 	modeKillTool
 	modePickAttach
 	modePickKill
+	modeDirJump
 )
 
 type tickMsg time.Time
@@ -58,7 +59,10 @@ type model struct {
 	shouldAttach    bool
 	sessionToAttach string // Name of session to attach to
 	homeNotice      string
+	dirQuery        string
 	getwd           func() (string, error)
+	chdir           func(string) error
+	lookupDir       func(string) (string, error)
 }
 
 func initialModel() model {
@@ -100,6 +104,8 @@ func initialModel() model {
 		mode:          modeHome,
 		pickerTargets: make(map[string]string),
 		getwd:         os.Getwd,
+		chdir:         os.Chdir,
+		lookupDir:     lookupDirectoryWithFasder,
 	}
 }
 
@@ -280,6 +286,23 @@ func repoFromCwd(cwd string) string {
 	return filepath.Base(cwd)
 }
 
+func lookupDirectoryWithFasder(query string) (string, error) {
+	args := []string{"-d"}
+	if strings.TrimSpace(query) != "" {
+		args = append(args, query)
+	}
+	out, err := exec.Command("fasder", args...).Output()
+	if err != nil {
+		return "", err
+	}
+	trimmed := strings.TrimSpace(string(out))
+	if trimmed == "" {
+		return "", fmt.Errorf("no matching directory")
+	}
+	lines := strings.Split(trimmed, "\n")
+	return strings.TrimSpace(lines[0]), nil
+}
+
 func fallbackCommand(tool, command string) string {
 	switch tool {
 	case "claude":
@@ -452,6 +475,50 @@ func (m model) updateHome(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	}
 
 	switch m.mode {
+	case modeDirJump:
+		switch msg.Type {
+		case tea.KeyEsc:
+			m.mode = modeHome
+			m.dirQuery = ""
+			m.homeNotice = ""
+			return m, nil
+		case tea.KeyEnter:
+			if strings.TrimSpace(m.dirQuery) == "" {
+				m.homeNotice = "enter a directory query"
+				return m, nil
+			}
+			lookup := m.lookupDir
+			if lookup == nil {
+				lookup = lookupDirectoryWithFasder
+			}
+			target, err := lookup(m.dirQuery)
+			if err != nil {
+				m.homeNotice = fmt.Sprintf("fasder lookup failed: %v", err)
+				return m, nil
+			}
+			chdir := m.chdir
+			if chdir == nil {
+				chdir = os.Chdir
+			}
+			if err := chdir(target); err != nil {
+				m.homeNotice = fmt.Sprintf("cd failed: %v", err)
+				return m, nil
+			}
+			m.mode = modeHome
+			m.homeNotice = fmt.Sprintf("changed directory to %s", target)
+			m.dirQuery = ""
+			return m, nil
+		case tea.KeyBackspace, tea.KeyDelete:
+			if len(m.dirQuery) > 0 {
+				m.dirQuery = m.dirQuery[:len(m.dirQuery)-1]
+			}
+			return m, nil
+		case tea.KeyRunes:
+			m.dirQuery += string(msg.Runes)
+			return m, nil
+		default:
+			return m, nil
+		}
 	case modeNewTool:
 		switch key {
 		case "c":
@@ -506,6 +573,11 @@ func (m model) updateHome(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m.handleToolAttach("codex")
 	case "u":
 		return m.handleToolAttach("cursor")
+	case "z":
+		m.mode = modeDirJump
+		m.homeNotice = ""
+		m.dirQuery = ""
+		return m, nil
 	case "n":
 		m.mode = modeNewTool
 		m.homeNotice = ""
@@ -594,6 +666,7 @@ func (m model) viewHome() string {
 	lines := []string{
 		titleStyle.Render("🤖 " + title),
 		metaStyle.Render(fmt.Sprintf("mode: %s", m.modeLabel())),
+		metaStyle.Render(fmt.Sprintf("dir: %s", m.currentDir())),
 	}
 
 	if m.homeNotice != "" {
@@ -601,6 +674,12 @@ func (m model) viewHome() string {
 	}
 
 	switch m.mode {
+	case modeDirJump:
+		lines = append(lines,
+			"z fasder jump",
+			fmt.Sprintf("query: %s", m.dirQuery),
+			"enter run   esc cancel",
+		)
 	case modeNewTool:
 		lines = append(lines,
 			fmt.Sprintf("%s new claude", keyStyle.Render("c")),
@@ -678,6 +757,8 @@ func (m model) modeLabel() string {
 		return "pick-attach"
 	case modePickKill:
 		return "pick-kill"
+	case modeDirJump:
+		return "dir-jump"
 	default:
 		return "home"
 	}
@@ -920,6 +1001,7 @@ Interactive mode keybindings:
   c               Attach claude (picker if multiple, create if none)
   x               Attach codex (picker if multiple, create if none)
   u               Attach cursor (picker if multiple, create if none)
+  z               Jump directory with fasder query
   n               New instance (then c/x/u)
   k               Kill one instance (then c/x/u and picker if needed)
   Esc             Go back/cancel in menus

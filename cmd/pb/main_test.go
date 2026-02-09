@@ -178,11 +178,78 @@ func TestViewRendersWelcomeMessage(t *testing.T) {
 	}
 
 	// Check that the view contains expected text
-	expectedTexts := []string{"Welcome to PocketBot", "mode: home", "kill-all"}
+	expectedTexts := []string{"Welcome to PocketBot", "mode: home", "dir:", "kill-all"}
 	for _, expected := range expectedTexts {
 		if !contains(view, expected) {
 			t.Errorf("View should contain %q, got: %s", expected, view)
 		}
+	}
+}
+
+func TestZEntersDirJumpMode(t *testing.T) {
+	m := model{
+		config:      config.DefaultConfig(),
+		sessions:    map[string]*tmux.Session{},
+		bindings:    map[string]commandBinding{},
+		windowWidth: 80,
+		viewState:   viewHome,
+		mode:        modeHome,
+	}
+
+	updatedModel, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("z")})
+	m, ok := updatedModel.(model)
+	if !ok {
+		t.Fatal("Update should return a model")
+	}
+	if cmd != nil {
+		t.Fatal("z should not quit")
+	}
+	if m.mode != modeDirJump {
+		t.Fatal("z should enter dir-jump mode")
+	}
+	if !contains(m.View(), "query:") {
+		t.Fatal("dir-jump view should render query line")
+	}
+}
+
+func TestDirJumpEnterChangesDirectory(t *testing.T) {
+	var changedTo string
+	m := model{
+		config:      config.DefaultConfig(),
+		sessions:    map[string]*tmux.Session{},
+		bindings:    map[string]commandBinding{},
+		windowWidth: 80,
+		viewState:   viewHome,
+		mode:        modeDirJump,
+		dirQuery:    "proj",
+		lookupDir: func(query string) (string, error) {
+			if query != "proj" {
+				t.Fatalf("expected query proj, got %q", query)
+			}
+			return "/tmp/project", nil
+		},
+		chdir: func(path string) error {
+			changedTo = path
+			return nil
+		},
+	}
+
+	updatedModel, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m, ok := updatedModel.(model)
+	if !ok {
+		t.Fatal("Update should return a model")
+	}
+	if cmd != nil {
+		t.Fatal("dir jump enter should not quit")
+	}
+	if changedTo != "/tmp/project" {
+		t.Fatalf("expected chdir to /tmp/project, got %q", changedTo)
+	}
+	if m.mode != modeHome {
+		t.Fatal("dir jump enter should return to home mode")
+	}
+	if !contains(m.homeNotice, "changed directory") {
+		t.Fatalf("expected changed-directory notice, got %q", m.homeNotice)
 	}
 }
 
