@@ -58,7 +58,9 @@ type model struct {
 	sessions        map[string]*tmux.Session
 	bindings        map[string]commandBinding
 	taskCounts      map[string]int
+	taskCommands    map[string][]string
 	taskRefreshAt   time.Time
+	showTaskDetails bool
 	windowWidth     int
 	viewState       viewState
 	mode            uiMode
@@ -111,6 +113,7 @@ func initialModel() model {
 		sessions:      sessions,
 		bindings:      make(map[string]commandBinding),
 		taskCounts:    make(map[string]int),
+		taskCommands:  make(map[string][]string),
 		windowWidth:   80,
 		viewState:     viewHome,
 		mode:          modeHome,
@@ -535,12 +538,16 @@ func (m *model) refreshTaskCounts() {
 	if m.taskCounts == nil {
 		m.taskCounts = make(map[string]int)
 	}
+	if m.taskCommands == nil {
+		m.taskCommands = make(map[string][]string)
+	}
 	now := time.Now()
 	if !m.taskRefreshAt.IsZero() && now.Sub(m.taskRefreshAt) < 900*time.Millisecond {
 		return
 	}
 
 	next := make(map[string]int)
+	nextCommands := make(map[string][]string)
 	for name, sess := range m.sessions {
 		if sess == nil || !sess.IsRunning() {
 			continue
@@ -550,9 +557,28 @@ func (m *model) refreshTaskCounts() {
 			continue
 		}
 		next[name] = len(tasks)
+		if len(tasks) > 0 {
+			nextCommands[name] = summarizeTaskCommands(tasks, 2)
+		}
 	}
 	m.taskCounts = next
+	m.taskCommands = nextCommands
 	m.taskRefreshAt = now
+}
+
+func summarizeTaskCommands(tasks []tmux.Task, max int) []string {
+	if max <= 0 || len(tasks) == 0 {
+		return nil
+	}
+	out := make([]string, 0, max+1)
+	for i, t := range tasks {
+		if i >= max {
+			out = append(out, fmt.Sprintf("+%d more", len(tasks)-max))
+			break
+		}
+		out = append(out, t.Command)
+	}
+	return out
 }
 
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -603,6 +629,16 @@ func (m model) updateHome(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if m.mode != modeHome {
 			m.mode = modeHome
 			m.homeNotice = ""
+			return m, nil
+		}
+	case "ctrl+t":
+		if m.mode == modeHome {
+			m.showTaskDetails = !m.showTaskDetails
+			if m.showTaskDetails {
+				m.homeNotice = "task details on"
+			} else {
+				m.homeNotice = "task details off"
+			}
 			return m, nil
 		}
 	}
@@ -949,6 +985,7 @@ func (m model) viewHome() string {
 		}
 		lines = append(lines,
 			fmt.Sprintf("%s jump-dir   %s new   %s kill", keyStyle.Render("z"), keyStyle.Render("n"), keyStyle.Render("k")),
+			fmt.Sprintf("%s task-lines", keyStyle.Render("^t")),
 		)
 		if m.hasAnyRunningSessions() {
 			lines = append(lines, fmt.Sprintf("%s quit   %s kill-all", keyStyle.Render("d"), keyStyle.Render("^c")))
@@ -968,6 +1005,7 @@ func (m model) detailedRows(tool string, names []string) []string {
 	repoLabelStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#888888"))
 	repoNameStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#7D56F4")).Bold(true)
 	taskStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#4DA3FF"))
+	taskDetailStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#AAAAAA"))
 	key := m.keyForTool(tool)
 	if len(names) == 0 {
 		if !m.toolEnabled(tool) || key == "" {
@@ -1011,6 +1049,11 @@ func (m model) detailedRows(tool string, names []string) []string {
 			rowParts = append(rowParts, status)
 		}
 		rows = append(rows, strings.Join(rowParts, " "))
+		if m.showTaskDetails {
+			for _, cmd := range m.taskCommands[name] {
+				rows = append(rows, taskDetailStyle.Render("  task: "+cmd))
+			}
+		}
 	}
 	return rows
 }
@@ -1271,6 +1314,7 @@ Interactive mode keybindings:
   z               Jump directory with fasder query
   n               New instance (then c/x/u)
   k               Kill one instance (then c/x/u and picker if needed)
+  Ctrl+T          Toggle per-session task lines on home screen
   Esc             Go back/cancel in menus
   Ctrl+D          Detach from session (back to pb)
   d               Quit pb (sessions keep running)

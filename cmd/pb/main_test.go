@@ -626,10 +626,11 @@ func TestHomeViewShowsSessionStatus(t *testing.T) {
 func TestDetailedRowsShowsTaskCountWhenPresent(t *testing.T) {
 	cfg := config.DefaultConfig()
 	m := model{
-		config:     cfg,
-		sessions:   map[string]*tmux.Session{},
-		bindings:   map[string]commandBinding{},
-		taskCounts: map[string]int{"claude": 2},
+		config:       cfg,
+		sessions:     map[string]*tmux.Session{},
+		bindings:     map[string]commandBinding{},
+		taskCounts:   map[string]int{"claude": 2},
+		taskCommands: map[string][]string{"claude": {"sleep 300"}},
 	}
 
 	rows := m.detailedRows("claude", []string{"claude"})
@@ -653,6 +654,49 @@ func TestSummaryRowShowsTaskTotalWhenPresent(t *testing.T) {
 	row := m.summaryRow("claude", []string{"claude", "claude-2"})
 	if !contains(row, "tasks:3") {
 		t.Fatalf("expected summary row to include task total, got: %s", row)
+	}
+}
+
+func TestDetailedRowsShowsTaskLinesWhenEnabled(t *testing.T) {
+	cfg := config.DefaultConfig()
+	m := model{
+		config:          cfg,
+		sessions:        map[string]*tmux.Session{},
+		bindings:        map[string]commandBinding{},
+		taskCounts:      map[string]int{"claude": 1},
+		taskCommands:    map[string][]string{"claude": {"sleep 300"}},
+		showTaskDetails: true,
+	}
+
+	rows := m.detailedRows("claude", []string{"claude"})
+	if len(rows) < 2 {
+		t.Fatalf("expected task detail line, got rows: %#v", rows)
+	}
+	if !contains(rows[1], "task: sleep 300") {
+		t.Fatalf("expected task detail content, got: %s", rows[1])
+	}
+}
+
+func TestCtrlTTogglesTaskLinesInHomeMode(t *testing.T) {
+	m := model{
+		config:      config.DefaultConfig(),
+		sessions:    map[string]*tmux.Session{},
+		bindings:    map[string]commandBinding{},
+		windowWidth: 80,
+		viewState:   viewHome,
+		mode:        modeHome,
+	}
+
+	updatedModel, cmd := m.Update(tea.KeyMsg{Type: tea.KeyCtrlT})
+	m, ok := updatedModel.(model)
+	if !ok {
+		t.Fatal("Update should return a model")
+	}
+	if cmd != nil {
+		t.Fatal("ctrl+t should not quit")
+	}
+	if !m.showTaskDetails {
+		t.Fatal("ctrl+t should enable task details")
 	}
 }
 

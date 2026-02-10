@@ -58,17 +58,15 @@ func TestFilterUserTasksPrefersLeafNonInfrastructure(t *testing.T) {
 	}
 }
 
-func TestFilterUserTasksFallsBackToLeafWhenAllInfrastructure(t *testing.T) {
+func TestFilterUserTasksDropsInfrastructureOnlyTrees(t *testing.T) {
 	tasks := []Task{
 		{PID: 111, PPID: 100, State: "S+", Command: "claude --continue"},
 		{PID: 112, PPID: 111, State: "S+", Command: "gopls"},
 	}
 
 	got := filterUserTasks(tasks)
-	want := []Task{
-		{PID: 112, PPID: 111, State: "S+", Command: "gopls"},
-	}
+	var want []Task
 	if !reflect.DeepEqual(got, want) {
-		t.Fatalf("filterUserTasks fallback mismatch:\n got: %#v\nwant: %#v", got, want)
+		t.Fatalf("filterUserTasks infrastructure-only mismatch:\n got: %#v\nwant: %#v", got, want)
 	}
 }

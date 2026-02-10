@@ -183,10 +183,7 @@ func filterUserTasks(tasks []Task) []Task {
 		}
 		filtered = append(filtered, t)
 	}
-	if len(filtered) > 0 {
-		return filtered
-	}
-	return leaf
+	return filtered
 }
 
 func isInfrastructureCommand(command string) bool {
