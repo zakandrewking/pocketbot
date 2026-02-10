@@ -794,11 +794,6 @@ func (m model) updateHome(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	if key == "t" && m.mode == modeHome {
 		m.showTaskDetails = !m.showTaskDetails
-		if m.showTaskDetails {
-			m.homeNotice = "task details on"
-		} else {
-			m.homeNotice = "task details off"
-		}
 		return m, nil
 	}
 
@@ -985,7 +980,7 @@ func (m model) viewHome() string {
 		}
 		lines = append(lines,
 			fmt.Sprintf("%s jump-dir   %s new   %s kill", keyStyle.Render("z"), keyStyle.Render("n"), keyStyle.Render("k")),
-			fmt.Sprintf("%s task-lines", keyStyle.Render("t")),
+			fmt.Sprintf("%s %s", keyStyle.Render("t"), map[bool]string{true: "hide tasks", false: "show tasks"}[m.showTaskDetails]),
 		)
 		if m.hasAnyRunningSessions() {
 			lines = append(lines, fmt.Sprintf("%s quit   %s kill-all", keyStyle.Render("d"), keyStyle.Render("^c")))
