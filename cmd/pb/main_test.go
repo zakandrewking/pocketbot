@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"os"
 	"testing"
@@ -677,6 +678,26 @@ func TestDetailedRowsShowsTaskLinesWhenEnabled(t *testing.T) {
 	}
 }
 
+func TestDetailedRowsHidesTaskCountWhenTaskLinesEnabled(t *testing.T) {
+	cfg := config.DefaultConfig()
+	m := model{
+		config:          cfg,
+		sessions:        map[string]*tmux.Session{},
+		bindings:        map[string]commandBinding{},
+		taskCounts:      map[string]int{"claude": 2},
+		taskCommands:    map[string][]string{"claude": {"sleep 300"}},
+		showTaskDetails: true,
+	}
+
+	rows := m.detailedRows("claude", []string{"claude"})
+	if len(rows) == 0 {
+		t.Fatal("expected detailed row")
+	}
+	if contains(rows[0], "tasks:2") {
+		t.Fatalf("did not expect task count on parent row when task lines shown, got: %s", rows[0])
+	}
+}
+
 func TestTTogglesTaskLinesInHomeMode(t *testing.T) {
 	m := model{
 		config:      config.DefaultConfig(),
@@ -697,6 +718,64 @@ func TestTTogglesTaskLinesInHomeMode(t *testing.T) {
 	}
 	if !m.showTaskDetails {
 		t.Fatal("t should enable task details")
+	}
+}
+
+func TestModePickKillTaskKillsSelectedPID(t *testing.T) {
+	m := model{
+		config: config.DefaultConfig(),
+		mode:   modePickKillTask,
+		taskKillTargets: map[string]taskKillTarget{
+			"a": {Session: "claude", PID: 4242, Command: "sleep 300"},
+		},
+	}
+
+	originalKill := killTaskPIDFn
+	defer func() { killTaskPIDFn = originalKill }()
+	killed := 0
+	killTaskPIDFn = func(pid int) error {
+		killed = pid
+		return nil
+	}
+
+	updatedModel, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("a")})
+	m, ok := updatedModel.(model)
+	if !ok {
+		t.Fatal("Update should return a model")
+	}
+	if cmd != nil {
+		t.Fatal("task kill selection should not quit")
+	}
+	if killed != 4242 {
+		t.Fatalf("expected pid 4242 to be killed, got %d", killed)
+	}
+	if m.mode != modeHome {
+		t.Fatalf("expected modeHome after killing task, got %v", m.mode)
+	}
+	if !contains(m.homeNotice, "killed pid 4242") {
+		t.Fatalf("expected killed notice, got %q", m.homeNotice)
+	}
+}
+
+func TestModePickKillTaskShowsErrorOnKillFailure(t *testing.T) {
+	m := model{
+		config: config.DefaultConfig(),
+		mode:   modePickKillTask,
+		taskKillTargets: map[string]taskKillTarget{
+			"a": {Session: "claude", PID: 4242, Command: "sleep 300"},
+		},
+	}
+
+	originalKill := killTaskPIDFn
+	defer func() { killTaskPIDFn = originalKill }()
+	killTaskPIDFn = func(pid int) error {
+		return errors.New("denied")
+	}
+
+	updatedModel, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("a")})
+	m = updatedModel.(model)
+	if !contains(m.homeNotice, "failed to kill pid 4242") {
+		t.Fatalf("expected kill failure notice, got %q", m.homeNotice)
 	}
 }
 

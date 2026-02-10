@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"syscall"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -19,6 +20,9 @@ import (
 var (
 	listSessionsFn     = tmux.ListSessions
 	sessionUserTasksFn = tmux.SessionUserTasks
+	killTaskPIDFn      = func(pid int) error {
+		return syscall.Kill(pid, syscall.SIGTERM)
+	}
 )
 
 type viewState int
@@ -36,6 +40,7 @@ const (
 	modeKillTool
 	modePickAttach
 	modePickKill
+	modePickKillTask
 	modeDirJump
 )
 
@@ -53,6 +58,12 @@ type commandBinding struct {
 	LastSeen    time.Time
 }
 
+type taskKillTarget struct {
+	Session string
+	PID     int
+	Command string
+}
+
 type model struct {
 	config          *config.Config
 	sessions        map[string]*tmux.Session
@@ -61,6 +72,7 @@ type model struct {
 	taskCommands    map[string][]string
 	taskRefreshAt   time.Time
 	showTaskDetails bool
+	taskKillTargets map[string]taskKillTarget
 	windowWidth     int
 	viewState       viewState
 	mode            uiMode
@@ -109,19 +121,20 @@ func initialModel() model {
 	}
 
 	return model{
-		config:        cfg,
-		sessions:      sessions,
-		bindings:      make(map[string]commandBinding),
-		taskCounts:    make(map[string]int),
-		taskCommands:  make(map[string][]string),
-		windowWidth:   80,
-		viewState:     viewHome,
-		mode:          modeHome,
-		pickerTargets: make(map[string]string),
-		getwd:         os.Getwd,
-		chdir:         os.Chdir,
-		lookupDirs:    lookupDirectoriesWithFasder,
-		hasFasder:     fasderAvailable(),
+		config:          cfg,
+		sessions:        sessions,
+		bindings:        make(map[string]commandBinding),
+		taskCounts:      make(map[string]int),
+		taskCommands:    make(map[string][]string),
+		taskKillTargets: make(map[string]taskKillTarget),
+		windowWidth:     80,
+		viewState:       viewHome,
+		mode:            modeHome,
+		pickerTargets:   make(map[string]string),
+		getwd:           os.Getwd,
+		chdir:           os.Chdir,
+		lookupDirs:      lookupDirectoriesWithFasder,
+		hasFasder:       fasderAvailable(),
 	}
 }
 
@@ -581,6 +594,56 @@ func summarizeTaskCommands(tasks []tmux.Task, max int) []string {
 	return out
 }
 
+func (m model) runningSessionNames() []string {
+	var names []string
+	for name, sess := range m.sessions {
+		if sess == nil || !sess.IsRunning() {
+			continue
+		}
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	return names
+}
+
+func (m model) enterTaskKillPicker() (model, tea.Cmd) {
+	targets := make([]taskKillTarget, 0)
+	for _, name := range m.runningSessionNames() {
+		tasks, err := sessionUserTasksFn(name)
+		if err != nil {
+			continue
+		}
+		for _, task := range tasks {
+			targets = append(targets, taskKillTarget{
+				Session: name,
+				PID:     task.PID,
+				Command: task.Command,
+			})
+		}
+	}
+
+	if len(targets) == 0 {
+		m.mode = modeHome
+		m.homeNotice = "no tasks to kill"
+		return m, nil
+	}
+
+	m.mode = modePickKillTask
+	m.taskKillTargets = make(map[string]taskKillTarget)
+	limit := len(targets)
+	maxKeys := len("abcdefghijklmnopqrstuvwxyz")
+	if limit > maxKeys {
+		limit = maxKeys
+		m.homeNotice = "showing first 26 tasks"
+	} else {
+		m.homeNotice = ""
+	}
+	for i := 0; i < limit; i++ {
+		m.taskKillTargets[pickerKey(i)] = targets[i]
+	}
+	return m, nil
+}
+
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
@@ -724,6 +787,8 @@ func (m model) updateHome(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				return m, nil
 			}
 			return m.handleToolKill("cursor")
+		case "t":
+			return m.enterTaskKillPicker()
 		default:
 			m.homeNotice = fmt.Sprintf("Unknown kill target %q.", key)
 			return m, nil
@@ -748,6 +813,20 @@ func (m model) updateHome(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		m.mode = modeHome
 		m.refreshBindings()
+		return m, nil
+	case modePickKillTask:
+		target, ok := m.taskKillTargets[key]
+		if !ok {
+			m.homeNotice = fmt.Sprintf("Unknown task target %q.", key)
+			return m, nil
+		}
+		if err := killTaskPIDFn(target.PID); err != nil {
+			m.homeNotice = fmt.Sprintf("failed to kill pid %d: %v", target.PID, err)
+		} else {
+			m.homeNotice = fmt.Sprintf("killed pid %d", target.PID)
+		}
+		m.mode = modeHome
+		m.refreshTaskCounts()
 		return m, nil
 	}
 
@@ -925,6 +1004,7 @@ func (m model) viewHome() string {
 		if runningCursor {
 			lines = append(lines, fmt.Sprintf("%s kill cursor", keyStyle.Render("u")))
 		}
+		lines = append(lines, fmt.Sprintf("%s kill task", keyStyle.Render("t")))
 		lines = append(lines, "esc cancel")
 	case modePickAttach, modePickKill:
 		action := "attach"
@@ -961,6 +1041,24 @@ func (m model) viewHome() string {
 			}
 			rowParts = append(rowParts, repoNameStyle.Render(repo))
 			lines = append(lines, strings.Join(rowParts, " "))
+		}
+		lines = append(lines, "esc cancel")
+	case modePickKillTask:
+		lines = append(lines, metaStyle.Render("kill task"))
+		keys := make([]string, 0, len(m.taskKillTargets))
+		for k := range m.taskKillTargets {
+			keys = append(keys, k)
+		}
+		sort.Strings(keys)
+		lines = append(lines, alertStyle.Render("pick one key to kill task"))
+		for _, k := range keys {
+			target := m.taskKillTargets[k]
+			lines = append(lines, fmt.Sprintf("%s %s pid:%d %s",
+				keyStyle.Render("("+k+")"),
+				target.Session,
+				target.PID,
+				target.Command,
+			))
 		}
 		lines = append(lines, "esc cancel")
 	default:
@@ -1037,8 +1135,10 @@ func (m model) detailedRows(tool string, names []string) []string {
 		}
 		repoText := repoLabelStyle.Render("repo:") + repoNameStyle.Render(repo)
 		rowParts := []string{keyStyle.Render("(" + join + ")"), name, repoText}
-		if n := m.taskCounts[name]; n > 0 {
-			rowParts = append(rowParts, taskStyle.Render(fmt.Sprintf("tasks:%d", n)))
+		if !m.showTaskDetails {
+			if n := m.taskCounts[name]; n > 0 {
+				rowParts = append(rowParts, taskStyle.Render(fmt.Sprintf("tasks:%d", n)))
+			}
 		}
 		if status != "" {
 			rowParts = append(rowParts, status)
