@@ -3,6 +3,7 @@ package tmux
 import (
 	"fmt"
 	"os/exec"
+	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
@@ -38,6 +39,16 @@ func SessionTasks(sessionName string) ([]Task, error) {
 		return nil, err
 	}
 	return collectDescendantTasks(pids, processes), nil
+}
+
+// SessionUserTasks returns a filtered task list intended to represent user work
+// instead of agent/editor helper processes.
+func SessionUserTasks(sessionName string) ([]Task, error) {
+	tasks, err := SessionTasks(sessionName)
+	if err != nil {
+		return nil, err
+	}
+	return filterUserTasks(tasks), nil
 }
 
 func panePIDs(sessionName string) ([]int, error) {
@@ -146,4 +157,60 @@ func collectDescendantTasks(rootPIDs []int, processes map[int]processInfo) []Tas
 		return tasks[i].PID < tasks[j].PID
 	})
 	return tasks
+}
+
+func filterUserTasks(tasks []Task) []Task {
+	if len(tasks) == 0 {
+		return nil
+	}
+
+	children := make(map[int]int)
+	for _, t := range tasks {
+		children[t.PPID]++
+	}
+
+	var leaf []Task
+	for _, t := range tasks {
+		if children[t.PID] == 0 {
+			leaf = append(leaf, t)
+		}
+	}
+
+	var filtered []Task
+	for _, t := range leaf {
+		if isInfrastructureCommand(t.Command) {
+			continue
+		}
+		filtered = append(filtered, t)
+	}
+	if len(filtered) > 0 {
+		return filtered
+	}
+	return leaf
+}
+
+func isInfrastructureCommand(command string) bool {
+	cmd := strings.TrimSpace(strings.ToLower(command))
+	if cmd == "" {
+		return true
+	}
+
+	words := strings.Fields(cmd)
+	if len(words) == 0 {
+		return true
+	}
+	bin := filepath.Base(words[0])
+
+	// Shell wrappers and agent runtimes are typically not the "task".
+	switch bin {
+	case "sh", "bash", "zsh", "fish", "claude", "codex", "agent":
+		return true
+	case "gopls":
+		return true
+	}
+	if strings.Contains(cmd, "gopls ** telemetry **") {
+		return true
+	}
+
+	return false
 }

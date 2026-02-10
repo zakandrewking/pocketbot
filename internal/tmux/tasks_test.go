@@ -41,3 +41,34 @@ func TestCollectDescendantTasks(t *testing.T) {
 		t.Fatalf("collectDescendantTasks mismatch:\n got: %#v\nwant: %#v", got, want)
 	}
 }
+
+func TestFilterUserTasksPrefersLeafNonInfrastructure(t *testing.T) {
+	tasks := []Task{
+		{PID: 111, PPID: 100, State: "S+", Command: "claude --continue"},
+		{PID: 112, PPID: 111, State: "S+", Command: "gopls"},
+		{PID: 113, PPID: 111, State: "S+", Command: "sleep 300"},
+	}
+
+	got := filterUserTasks(tasks)
+	want := []Task{
+		{PID: 113, PPID: 111, State: "S+", Command: "sleep 300"},
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("filterUserTasks mismatch:\n got: %#v\nwant: %#v", got, want)
+	}
+}
+
+func TestFilterUserTasksFallsBackToLeafWhenAllInfrastructure(t *testing.T) {
+	tasks := []Task{
+		{PID: 111, PPID: 100, State: "S+", Command: "claude --continue"},
+		{PID: 112, PPID: 111, State: "S+", Command: "gopls"},
+	}
+
+	got := filterUserTasks(tasks)
+	want := []Task{
+		{PID: 112, PPID: 111, State: "S+", Command: "gopls"},
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("filterUserTasks fallback mismatch:\n got: %#v\nwant: %#v", got, want)
+	}
+}

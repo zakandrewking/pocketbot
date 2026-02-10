@@ -17,8 +17,8 @@ import (
 )
 
 var (
-	listSessionsFn = tmux.ListSessions
-	sessionTasksFn = tmux.SessionTasks
+	listSessionsFn     = tmux.ListSessions
+	sessionUserTasksFn = tmux.SessionUserTasks
 )
 
 type viewState int
@@ -1142,7 +1142,7 @@ func printClaudeTasksForSocket(w io.Writer) bool {
 			continue
 		}
 		seenClaude = true
-		tasks, err := sessionTasksFn(name)
+		tasks, err := sessionUserTasksFn(name)
 		if err != nil {
 			fmt.Fprintf(w, "%s: error reading tasks: %v\n", name, err)
 			continue

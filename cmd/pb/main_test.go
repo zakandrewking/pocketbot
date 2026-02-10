@@ -766,10 +766,10 @@ func TestPrintClaudeTasksFallsBackToRootSocketWhenNested(t *testing.T) {
 	}()
 
 	originalListSessions := listSessionsFn
-	originalSessionTasks := sessionTasksFn
+	originalSessionTasks := sessionUserTasksFn
 	defer func() {
 		listSessionsFn = originalListSessions
-		sessionTasksFn = originalSessionTasks
+		sessionUserTasksFn = originalSessionTasks
 	}()
 
 	listSessionsFn = func() []string {
@@ -778,7 +778,7 @@ func TestPrintClaudeTasksFallsBackToRootSocketWhenNested(t *testing.T) {
 		}
 		return []string{"claude"}
 	}
-	sessionTasksFn = func(sessionName string) ([]tmux.Task, error) {
+	sessionUserTasksFn = func(sessionName string) ([]tmux.Task, error) {
 		if sessionName != "claude" {
 			t.Fatalf("unexpected session: %s", sessionName)
 		}
