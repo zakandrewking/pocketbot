@@ -122,3 +122,36 @@ func TestFilterUserTasksSkipsShellWrapperWhenNoBetterSignal(t *testing.T) {
 		t.Fatalf("filterUserTasks wrapper mismatch:\n got: %#v\nwant: %#v", got, want)
 	}
 }
+
+func TestFilterUserTasksKeepsMultipleBranchesFromSingleShellRoot(t *testing.T) {
+	tasks := []Task{
+		{PID: 55235, PPID: 55233, State: "Ss", Command: "bash"},
+		{PID: 3045, PPID: 55235, State: "Ss", Command: "/bin/zsh -c eval 'npx nx serve webportal --host=0.0.0.0'"},
+		{PID: 3056, PPID: 3045, State: "S", Command: "npm exec nx serve webportal --host=0.0.0.0"},
+		{PID: 3087, PPID: 3056, State: "S", Command: "node /repo/node_modules/.bin/nx serve webportal --host=0.0.0.0"},
+		{PID: 89225, PPID: 55235, State: "Ss", Command: "/bin/zsh -c eval 'NX_DAEMON=false HOST=0.0.0.0 npx nx serve backend'"},
+		{PID: 89236, PPID: 89225, State: "S", Command: "npm exec nx serve backend"},
+		{PID: 89262, PPID: 89236, State: "S", Command: "node /repo/node_modules/.bin/nx serve backend"},
+		{PID: 59224, PPID: 55235, State: "Ss", Command: "/bin/zsh -c eval 'make integration-test-backend 2>&1'"},
+		{PID: 59243, PPID: 59224, State: "S", Command: "/usr/bin/make integration-test-backend"},
+	}
+
+	got := filterUserTasks(tasks)
+	sort.Slice(got, func(i, j int) bool { return got[i].PID < got[j].PID })
+	want := []Task{
+		{PID: 3087, PPID: 3056, State: "S", Command: "node /repo/node_modules/.bin/nx serve webportal --host=0.0.0.0"},
+		{PID: 59243, PPID: 59224, State: "S", Command: "/usr/bin/make integration-test-backend"},
+		{PID: 89262, PPID: 89236, State: "S", Command: "node /repo/node_modules/.bin/nx serve backend"},
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("filterUserTasks multi-branch mismatch:\n got: %#v\nwant: %#v", got, want)
+	}
+}
+
+func TestTaskScorePrefersNodeNxServeOverNpmExecWrapper(t *testing.T) {
+	npm := "npm exec nx serve webportal --host=0.0.0.0"
+	node := "node /repo/node_modules/.bin/nx serve webportal --host=0.0.0.0"
+	if taskScore(node) <= taskScore(npm) {
+		t.Fatalf("expected node nx serve to outrank npm wrapper, got node=%d npm=%d", taskScore(node), taskScore(npm))
+	}
+}

@@ -182,21 +182,45 @@ func filterUserTasks(tasks []Task) []Task {
 	selected := make(map[int]bool)
 	out := make([]Task, 0, len(roots))
 	for _, root := range roots {
-		rep, ok := chooseRepresentative(root, children)
-		if !ok {
-			continue
+		reps := collectRepresentatives(root, children)
+		for _, rep := range reps {
+			if selected[rep.PID] {
+				continue
+			}
+			selected[rep.PID] = true
+			out = append(out, rep)
 		}
-		if selected[rep.PID] {
-			continue
-		}
-		selected[rep.PID] = true
-		out = append(out, rep)
 	}
 
 	sort.Slice(out, func(i, j int) bool {
 		return out[i].PID < out[j].PID
 	})
 	return out
+}
+
+func collectRepresentatives(root Task, children map[int][]Task) []Task {
+	// Roots with multiple children usually represent independent branches.
+	// Split by direct child so parallel tasks are preserved.
+	kids := children[root.PID]
+	if len(kids) > 1 || isShellWrapper(root.Command) {
+		var reps []Task
+		for _, child := range kids {
+			rep, ok := chooseRepresentative(child, children)
+			if !ok {
+				continue
+			}
+			reps = append(reps, rep)
+		}
+		if len(reps) > 0 {
+			return reps
+		}
+	}
+
+	rep, ok := chooseRepresentative(root, children)
+	if !ok {
+		return nil
+	}
+	return []Task{rep}
 }
 
 type taskNode struct {
@@ -247,7 +271,10 @@ func taskScore(command string) int {
 	if filepath.Base(words[0]) == "make" {
 		return 100
 	}
-	if strings.Contains(cmd, " nx serve ") || strings.Contains(cmd, "/.bin/nx serve ") {
+	if strings.Contains(cmd, "/.bin/nx serve ") {
+		return 98
+	}
+	if strings.Contains(cmd, " nx serve ") {
 		return 95
 	}
 	if strings.Contains(cmd, "npm exec nx serve") || strings.Contains(cmd, "npx nx serve") {
