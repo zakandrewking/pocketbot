@@ -631,16 +631,6 @@ func (m model) updateHome(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.homeNotice = ""
 			return m, nil
 		}
-	case "ctrl+t":
-		if m.mode == modeHome {
-			m.showTaskDetails = !m.showTaskDetails
-			if m.showTaskDetails {
-				m.homeNotice = "task details on"
-			} else {
-				m.homeNotice = "task details off"
-			}
-			return m, nil
-		}
 	}
 
 	switch m.mode {
@@ -800,6 +790,16 @@ func (m model) updateHome(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			continue
 		}
 		return m.startAndAttachSession(sess.Name, sess.Command)
+	}
+
+	if key == "t" && m.mode == modeHome {
+		m.showTaskDetails = !m.showTaskDetails
+		if m.showTaskDetails {
+			m.homeNotice = "task details on"
+		} else {
+			m.homeNotice = "task details off"
+		}
+		return m, nil
 	}
 
 	return m, nil
@@ -985,7 +985,7 @@ func (m model) viewHome() string {
 		}
 		lines = append(lines,
 			fmt.Sprintf("%s jump-dir   %s new   %s kill", keyStyle.Render("z"), keyStyle.Render("n"), keyStyle.Render("k")),
-			fmt.Sprintf("%s task-lines", keyStyle.Render("^t")),
+			fmt.Sprintf("%s task-lines", keyStyle.Render("t")),
 		)
 		if m.hasAnyRunningSessions() {
 			lines = append(lines, fmt.Sprintf("%s quit   %s kill-all", keyStyle.Render("d"), keyStyle.Render("^c")))
@@ -1314,7 +1314,7 @@ Interactive mode keybindings:
   z               Jump directory with fasder query
   n               New instance (then c/x/u)
   k               Kill one instance (then c/x/u and picker if needed)
-  Ctrl+T          Toggle per-session task lines on home screen
+  t               Toggle per-session task lines on home screen
   Esc             Go back/cancel in menus
   Ctrl+D          Detach from session (back to pb)
   d               Quit pb (sessions keep running)

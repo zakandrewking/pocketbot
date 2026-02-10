@@ -677,7 +677,7 @@ func TestDetailedRowsShowsTaskLinesWhenEnabled(t *testing.T) {
 	}
 }
 
-func TestCtrlTTogglesTaskLinesInHomeMode(t *testing.T) {
+func TestTTogglesTaskLinesInHomeMode(t *testing.T) {
 	m := model{
 		config:      config.DefaultConfig(),
 		sessions:    map[string]*tmux.Session{},
@@ -687,16 +687,16 @@ func TestCtrlTTogglesTaskLinesInHomeMode(t *testing.T) {
 		mode:        modeHome,
 	}
 
-	updatedModel, cmd := m.Update(tea.KeyMsg{Type: tea.KeyCtrlT})
+	updatedModel, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("t")})
 	m, ok := updatedModel.(model)
 	if !ok {
 		t.Fatal("Update should return a model")
 	}
 	if cmd != nil {
-		t.Fatal("ctrl+t should not quit")
+		t.Fatal("t should not quit")
 	}
 	if !m.showTaskDetails {
-		t.Fatal("ctrl+t should enable task details")
+		t.Fatal("t should enable task details")
 	}
 }
 
