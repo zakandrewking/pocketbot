@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -13,6 +14,11 @@ import (
 	"github.com/charmbracelet/lipgloss"
 	"github.com/zakandrewking/pocketbot/internal/config"
 	"github.com/zakandrewking/pocketbot/internal/tmux"
+)
+
+var (
+	listSessionsFn = tmux.ListSessions
+	sessionTasksFn = tmux.SessionTasks
 )
 
 type viewState int
@@ -1126,8 +1132,8 @@ func handleSubcommand(cmd string) {
 	}
 }
 
-func printClaudeTasks() {
-	names := tmux.ListSessions()
+func printClaudeTasksForSocket(w io.Writer) bool {
+	names := listSessionsFn()
 	sort.Strings(names)
 
 	seenClaude := false
@@ -1136,24 +1142,41 @@ func printClaudeTasks() {
 			continue
 		}
 		seenClaude = true
-		tasks, err := tmux.SessionTasks(name)
+		tasks, err := sessionTasksFn(name)
 		if err != nil {
-			fmt.Printf("%s: error reading tasks: %v\n", name, err)
+			fmt.Fprintf(w, "%s: error reading tasks: %v\n", name, err)
 			continue
 		}
-		fmt.Printf("%s: %d task process(es)\n", name, len(tasks))
+		fmt.Fprintf(w, "%s: %d task process(es)\n", name, len(tasks))
 		if len(tasks) == 0 {
-			fmt.Println("  (none)")
+			fmt.Fprintln(w, "  (none)")
 			continue
 		}
 		for _, task := range tasks {
-			fmt.Printf("  pid=%d ppid=%d state=%s cmd=%s\n", task.PID, task.PPID, task.State, task.Command)
+			fmt.Fprintf(w, "  pid=%d ppid=%d state=%s cmd=%s\n", task.PID, task.PPID, task.State, task.Command)
+		}
+	}
+	return seenClaude
+}
+
+func printClaudeTasks() {
+	if printClaudeTasksForSocket(os.Stdout) {
+		return
+	}
+
+	// If running nested inside a session, PB_LEVEL points at the nested socket.
+	// Fall back to root socket so `pb tasks` still sees top-level agent sessions.
+	level := os.Getenv("PB_LEVEL")
+	if level != "" {
+		_ = os.Unsetenv("PB_LEVEL")
+		found := printClaudeTasksForSocket(os.Stdout)
+		_ = os.Setenv("PB_LEVEL", level)
+		if found {
+			return
 		}
 	}
 
-	if !seenClaude {
-		fmt.Println("No claude sessions are running.")
-	}
+	fmt.Println("No claude sessions are running.")
 }
 
 func runCommand(name string, args ...string) {

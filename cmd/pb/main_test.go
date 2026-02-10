@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"fmt"
 	"os"
 	"testing"
@@ -750,5 +751,55 @@ func TestCreateSessionStoresCommandBindingOption(t *testing.T) {
 	commandName := tmux.GetSessionCommand(sessionName)
 	if commandName != sessionName {
 		t.Fatalf("expected @pb_command to be %q, got %q", sessionName, commandName)
+	}
+}
+
+func TestPrintClaudeTasksFallsBackToRootSocketWhenNested(t *testing.T) {
+	originalLevel := os.Getenv("PB_LEVEL")
+	_ = os.Setenv("PB_LEVEL", "1")
+	defer func() {
+		if originalLevel == "" {
+			_ = os.Unsetenv("PB_LEVEL")
+			return
+		}
+		_ = os.Setenv("PB_LEVEL", originalLevel)
+	}()
+
+	originalListSessions := listSessionsFn
+	originalSessionTasks := sessionTasksFn
+	defer func() {
+		listSessionsFn = originalListSessions
+		sessionTasksFn = originalSessionTasks
+	}()
+
+	listSessionsFn = func() []string {
+		if os.Getenv("PB_LEVEL") == "1" {
+			return nil
+		}
+		return []string{"claude"}
+	}
+	sessionTasksFn = func(sessionName string) ([]tmux.Task, error) {
+		if sessionName != "claude" {
+			t.Fatalf("unexpected session: %s", sessionName)
+		}
+		return []tmux.Task{{PID: 42, PPID: 1, State: "S", Command: "echo hi"}}, nil
+	}
+
+	var buf bytes.Buffer
+	if !printClaudeTasksForSocket(&buf) {
+		// nested socket should have no sessions in this test setup
+	} else {
+		t.Fatal("expected nested socket pass to find no claude sessions")
+	}
+
+	// Simulate root fallback pass.
+	_ = os.Unsetenv("PB_LEVEL")
+	defer os.Setenv("PB_LEVEL", "1")
+	found := printClaudeTasksForSocket(&buf)
+	if !found {
+		t.Fatal("expected fallback socket to find claude session")
+	}
+	if !contains(buf.String(), "claude: 1 task process(es)") {
+		t.Fatalf("expected claude task line, got: %s", buf.String())
 	}
 }
