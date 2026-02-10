@@ -779,6 +779,62 @@ func TestModePickKillTaskShowsErrorOnKillFailure(t *testing.T) {
 	}
 }
 
+func TestCreateAndAttachToolReusesSessionInCurrentDirectory(t *testing.T) {
+	cfg := config.DefaultConfig()
+	m := model{
+		config:    cfg,
+		sessions:  map[string]*tmux.Session{"claude": tmux.NewSession("claude", cfg.Claude.Command)},
+		bindings:  map[string]commandBinding{"claude": {SessionName: "claude", Cwd: "/repo", Running: true}},
+		viewState: viewHome,
+		mode:      modeHome,
+		getwd: func() (string, error) {
+			return "/repo", nil
+		},
+	}
+
+	updatedModel, cmd := m.createAndAttachTool("claude")
+	if cmd == nil {
+		t.Fatal("expected quit command for attach request")
+	}
+	if !updatedModel.shouldAttach {
+		t.Fatal("expected shouldAttach=true")
+	}
+	if updatedModel.sessionToAttach != "claude" {
+		t.Fatalf("expected attach target claude, got %q", updatedModel.sessionToAttach)
+	}
+}
+
+func TestCreateAndAttachToolShowsPickerWhenMultipleSessionsInCurrentDirectory(t *testing.T) {
+	cfg := config.DefaultConfig()
+	m := model{
+		config: cfg,
+		sessions: map[string]*tmux.Session{
+			"claude":   tmux.NewSession("claude", cfg.Claude.Command),
+			"claude-2": tmux.NewSession("claude-2", cfg.Claude.Command),
+		},
+		bindings: map[string]commandBinding{
+			"claude":   {SessionName: "claude", Cwd: "/repo", Running: true},
+			"claude-2": {SessionName: "claude-2", Cwd: "/repo", Running: true},
+		},
+		viewState: viewHome,
+		mode:      modeHome,
+		getwd: func() (string, error) {
+			return "/repo", nil
+		},
+	}
+
+	updatedModel, cmd := m.createAndAttachTool("claude")
+	if cmd != nil {
+		t.Fatal("did not expect immediate quit when picker is shown")
+	}
+	if updatedModel.mode != modePickAttach {
+		t.Fatalf("expected modePickAttach, got %v", updatedModel.mode)
+	}
+	if len(updatedModel.pickerTargets) != 2 {
+		t.Fatalf("expected 2 picker targets, got %d", len(updatedModel.pickerTargets))
+	}
+}
+
 func TestDirectoryBindingAllowsAttachInDifferentDirectory(t *testing.T) {
 	requireTmuxSessionCreation(t)
 
