@@ -623,6 +623,39 @@ func TestHomeViewShowsSessionStatus(t *testing.T) {
 	}
 }
 
+func TestDetailedRowsShowsTaskCountWhenPresent(t *testing.T) {
+	cfg := config.DefaultConfig()
+	m := model{
+		config:     cfg,
+		sessions:   map[string]*tmux.Session{},
+		bindings:   map[string]commandBinding{},
+		taskCounts: map[string]int{"claude": 2},
+	}
+
+	rows := m.detailedRows("claude", []string{"claude"})
+	if len(rows) == 0 {
+		t.Fatal("expected detailed row")
+	}
+	if !contains(rows[0], "tasks:2") {
+		t.Fatalf("expected tasks count in row, got: %s", rows[0])
+	}
+}
+
+func TestSummaryRowShowsTaskTotalWhenPresent(t *testing.T) {
+	m := model{
+		taskCounts: map[string]int{
+			"claude":   2,
+			"claude-2": 1,
+		},
+		sessions: map[string]*tmux.Session{},
+	}
+
+	row := m.summaryRow("claude", []string{"claude", "claude-2"})
+	if !contains(row, "tasks:3") {
+		t.Fatalf("expected summary row to include task total, got: %s", row)
+	}
+}
+
 func TestDirectoryBindingAllowsAttachInDifferentDirectory(t *testing.T) {
 	requireTmuxSessionCreation(t)
 

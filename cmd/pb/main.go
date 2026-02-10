@@ -57,6 +57,8 @@ type model struct {
 	config          *config.Config
 	sessions        map[string]*tmux.Session
 	bindings        map[string]commandBinding
+	taskCounts      map[string]int
+	taskRefreshAt   time.Time
 	windowWidth     int
 	viewState       viewState
 	mode            uiMode
@@ -108,6 +110,7 @@ func initialModel() model {
 		config:        cfg,
 		sessions:      sessions,
 		bindings:      make(map[string]commandBinding),
+		taskCounts:    make(map[string]int),
 		windowWidth:   80,
 		viewState:     viewHome,
 		mode:          modeHome,
@@ -528,6 +531,30 @@ func (m model) Init() tea.Cmd {
 	return tickCmd
 }
 
+func (m *model) refreshTaskCounts() {
+	if m.taskCounts == nil {
+		m.taskCounts = make(map[string]int)
+	}
+	now := time.Now()
+	if !m.taskRefreshAt.IsZero() && now.Sub(m.taskRefreshAt) < 900*time.Millisecond {
+		return
+	}
+
+	next := make(map[string]int)
+	for name, sess := range m.sessions {
+		if sess == nil || !sess.IsRunning() {
+			continue
+		}
+		tasks, err := sessionUserTasksFn(name)
+		if err != nil {
+			continue
+		}
+		next[name] = len(tasks)
+	}
+	m.taskCounts = next
+	m.taskRefreshAt = now
+}
+
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
@@ -544,6 +571,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		for _, sess := range m.sessions {
 			sess.UpdateActivity()
 		}
+		m.refreshTaskCounts()
 		return m, tickCmd
 	case tea.WindowSizeMsg:
 		m.windowWidth = msg.Width
@@ -939,6 +967,7 @@ func (m model) detailedRows(tool string, names []string) []string {
 	idleStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#999999"))
 	repoLabelStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#888888"))
 	repoNameStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#7D56F4")).Bold(true)
+	taskStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#4DA3FF"))
 	key := m.keyForTool(tool)
 	if len(names) == 0 {
 		if !m.toolEnabled(tool) || key == "" {
@@ -975,6 +1004,9 @@ func (m model) detailedRows(tool string, names []string) []string {
 		}
 		repoText := repoLabelStyle.Render("repo:") + repoNameStyle.Render(repo)
 		rowParts := []string{keyStyle.Render("(" + join + ")"), name, repoText}
+		if n := m.taskCounts[name]; n > 0 {
+			rowParts = append(rowParts, taskStyle.Render(fmt.Sprintf("tasks:%d", n)))
+		}
 		if status != "" {
 			rowParts = append(rowParts, status)
 		}
@@ -985,19 +1017,25 @@ func (m model) detailedRows(tool string, names []string) []string {
 
 func (m model) summaryRow(tool string, names []string) string {
 	active := 0
+	taskTotal := 0
 	for _, name := range names {
 		if sess, ok := m.sessions[name]; ok && sess.IsActive() {
 			active++
 		}
+		taskTotal += m.taskCounts[name]
 	}
 	metaStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#888888"))
 	activeStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#04B575")).Bold(true)
-	return fmt.Sprintf("%s %d %s %s",
+	parts := []string{
 		tool,
-		len(names),
+		fmt.Sprintf("%d", len(names)),
 		activeStyle.Render(fmt.Sprintf("active:%d", active)),
 		metaStyle.Render(fmt.Sprintf("idle:%d", len(names)-active)),
-	)
+	}
+	if taskTotal > 0 {
+		parts = append(parts, metaStyle.Render(fmt.Sprintf("tasks:%d", taskTotal)))
+	}
+	return strings.Join(parts, " ")
 }
 
 func (m model) hasAnyRunningSessions() bool {
