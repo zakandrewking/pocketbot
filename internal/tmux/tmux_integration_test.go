@@ -97,7 +97,7 @@ func TestIntegrationBurstTransitionsResponsive(t *testing.T) {
 	}
 
 	activeLatency := activeAt.Sub(start)
-	if activeLatency > 2500*time.Millisecond {
+	if activeLatency > 2*time.Second {
 		t.Fatalf("active detection too slow: %v", activeLatency)
 	}
 	t.Logf("active latency: %v", activeLatency)

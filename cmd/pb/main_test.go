@@ -11,6 +11,15 @@ import (
 	"github.com/zakandrewking/pocketbot/internal/tmux"
 )
 
+func requireTmuxSessionCreation(t *testing.T) {
+	t.Helper()
+	name := fmt.Sprintf("test-probe-%d", time.Now().UnixNano())
+	if err := tmux.CreateSession(name, "sleep 1"); err != nil {
+		t.Skipf("tmux sessions cannot be started in this environment: %v", err)
+	}
+	_ = tmux.KillSession(name)
+}
+
 func TestCtrlCQuits(t *testing.T) {
 	m := initialModel()
 
@@ -183,7 +192,7 @@ func TestViewRendersWelcomeMessage(t *testing.T) {
 	}
 
 	// Check that the view contains expected text
-	expectedTexts := []string{"Welcome to PocketBot", "mode: home", "dir:", "kill-all"}
+	expectedTexts := []string{"Welcome to PocketBot", "dir:", "kill-all"}
 	for _, expected := range expectedTexts {
 		if !contains(view, expected) {
 			t.Errorf("View should contain %q, got: %s", expected, view)
@@ -614,6 +623,8 @@ func TestHomeViewShowsSessionStatus(t *testing.T) {
 }
 
 func TestDirectoryBindingAllowsAttachInDifferentDirectory(t *testing.T) {
+	requireTmuxSessionCreation(t)
+
 	cwd1 := t.TempDir()
 	cwd2 := t.TempDir()
 	sessionName := fmt.Sprintf("test-bind-%d", time.Now().UnixNano())
@@ -672,6 +683,8 @@ func TestDirectoryBindingAllowsAttachInDifferentDirectory(t *testing.T) {
 }
 
 func TestDirectoryBindingClearsWhenSessionStops(t *testing.T) {
+	requireTmuxSessionCreation(t)
+
 	launchDir := t.TempDir()
 	sessionName := fmt.Sprintf("test-bind-clear-%d", time.Now().UnixNano())
 	originalCwd, err := os.Getwd()

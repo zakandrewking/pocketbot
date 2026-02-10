@@ -296,6 +296,18 @@ func (s *Session) IsActive() bool {
 	return time.Since(s.lastActivity) < IdleTimeout
 }
 
+// ActivityKnown reports whether we've captured enough pane data to classify
+// activity for this running session.
+func (s *Session) ActivityKnown() bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if !SessionExists(s.name) {
+		return false
+	}
+	return s.lastCapture != ""
+}
+
 func nextActivityPollInterval(idleFor time.Duration) time.Duration {
 	switch {
 	case idleFor < IdleTimeout:

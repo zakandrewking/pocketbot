@@ -801,7 +801,6 @@ func (m model) viewHome() string {
 	}
 	lines := []string{
 		titleStyle.Render("🤖 " + title),
-		metaStyle.Render(fmt.Sprintf("mode: %s", m.modeLabel())),
 		metaStyle.Render(fmt.Sprintf("dir: %s", m.currentDir())),
 	}
 
@@ -880,15 +879,23 @@ func (m model) viewHome() string {
 		}
 		for _, k := range keys {
 			name := m.pickerTargets[k]
-			status := idleStyle.Render("○")
-			if sess, ok := m.sessions[name]; ok && sess.IsActive() {
-				status = activeStyle.Render("●")
+			status := ""
+			if sess, ok := m.sessions[name]; ok && sess.ActivityKnown() {
+				status = idleStyle.Render("○")
+				if sess.IsActive() {
+					status = activeStyle.Render("●")
+				}
 			}
 			repo := "-"
 			if binding, ok := m.bindings[name]; ok {
 				repo = repoFromCwd(binding.Cwd)
 			}
-			lines = append(lines, fmt.Sprintf("%s %s %s %s", keyStyle.Render("("+k+")"), name, status, repoNameStyle.Render(repo)))
+			rowParts := []string{keyStyle.Render("(" + k + ")"), name}
+			if status != "" {
+				rowParts = append(rowParts, status)
+			}
+			rowParts = append(rowParts, repoNameStyle.Render(repo))
+			lines = append(lines, strings.Join(rowParts, " "))
 		}
 		lines = append(lines, "esc cancel")
 	default:
@@ -917,23 +924,6 @@ func (m model) viewHome() string {
 	}
 
 	return strings.Join(capLines(lines, 20), "\n") + "\n"
-}
-
-func (m model) modeLabel() string {
-	switch m.mode {
-	case modeNewTool:
-		return "new"
-	case modeKillTool:
-		return "kill"
-	case modePickAttach:
-		return "pick-attach"
-	case modePickKill:
-		return "pick-kill"
-	case modeDirJump:
-		return "dir-jump"
-	default:
-		return "home"
-	}
 }
 
 func (m model) detailedRows(tool string, names []string) []string {
@@ -966,21 +956,23 @@ func (m model) detailedRows(tool string, names []string) []string {
 			}
 			join = key + " " + letter
 		}
-		status := idleStyle.Render("○ idle")
-		if sess, ok := m.sessions[name]; ok && sess.IsActive() {
-			status = activeStyle.Render("● active")
+		status := ""
+		if sess, ok := m.sessions[name]; ok && sess.ActivityKnown() {
+			status = idleStyle.Render("○ idle")
+			if sess.IsActive() {
+				status = activeStyle.Render("● active")
+			}
 		}
 		repo := "-"
 		if binding, ok := m.bindings[name]; ok {
 			repo = repoFromCwd(binding.Cwd)
 		}
 		repoText := repoLabelStyle.Render("repo:") + repoNameStyle.Render(repo)
-		rows = append(rows, fmt.Sprintf("%s %s %s %s",
-			keyStyle.Render("("+join+")"),
-			name,
-			repoText,
-			status,
-		))
+		rowParts := []string{keyStyle.Render("(" + join + ")"), name, repoText}
+		if status != "" {
+			rowParts = append(rowParts, status)
+		}
+		rows = append(rows, strings.Join(rowParts, " "))
 	}
 	return rows
 }
@@ -1116,6 +1108,8 @@ func handleSubcommand(cmd string) {
 			socket = "pocketbot-" + level
 		}
 		runCommand("tmux", "-L", socket, "list-sessions")
+	case "tasks":
+		printClaudeTasks()
 	case "kill-all":
 		// Kill sessions for current nesting level
 		socket := "pocketbot"
@@ -1129,6 +1123,36 @@ func handleSubcommand(cmd string) {
 		fmt.Fprintf(os.Stderr, "Unknown command: %s\n", cmd)
 		fmt.Fprintf(os.Stderr, "Run 'pb help' for usage\n")
 		os.Exit(1)
+	}
+}
+
+func printClaudeTasks() {
+	names := tmux.ListSessions()
+	sort.Strings(names)
+
+	seenClaude := false
+	for _, name := range names {
+		if toolFromSessionName(name) != "claude" {
+			continue
+		}
+		seenClaude = true
+		tasks, err := tmux.SessionTasks(name)
+		if err != nil {
+			fmt.Printf("%s: error reading tasks: %v\n", name, err)
+			continue
+		}
+		fmt.Printf("%s: %d task process(es)\n", name, len(tasks))
+		if len(tasks) == 0 {
+			fmt.Println("  (none)")
+			continue
+		}
+		for _, task := range tasks {
+			fmt.Printf("  pid=%d ppid=%d state=%s cmd=%s\n", task.PID, task.PPID, task.State, task.Command)
+		}
+	}
+
+	if !seenClaude {
+		fmt.Println("No claude sessions are running.")
 	}
 }
 
@@ -1175,6 +1199,7 @@ Usage:
   pb run          Run development version
   pb demo         Run a simple demo session (for testing)
   pb sessions     List active tmux sessions
+  pb tasks        List descendant processes for running claude sessions (spike)
   pb kill-all     Kill all sessions
   pb help         Show this help
 
