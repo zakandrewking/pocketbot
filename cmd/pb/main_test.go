@@ -910,7 +910,7 @@ func TestCreateSessionStoresCommandBindingOption(t *testing.T) {
 	}
 }
 
-func TestPrintClaudeTasksFallsBackToRootSocketWhenNested(t *testing.T) {
+func TestPrintToolTasksFallsBackToRootSocketWhenNested(t *testing.T) {
 	originalLevel := os.Getenv("PB_LEVEL")
 	_ = os.Setenv("PB_LEVEL", "1")
 	defer func() {
@@ -942,16 +942,16 @@ func TestPrintClaudeTasksFallsBackToRootSocketWhenNested(t *testing.T) {
 	}
 
 	var buf bytes.Buffer
-	if !printClaudeTasksForSocket(&buf) {
+	if !printToolTasksForSocket(&buf) {
 		// nested socket should have no sessions in this test setup
 	} else {
-		t.Fatal("expected nested socket pass to find no claude sessions")
+		t.Fatal("expected nested socket pass to find no tool sessions")
 	}
 
 	// Simulate root fallback pass.
 	_ = os.Unsetenv("PB_LEVEL")
 	defer os.Setenv("PB_LEVEL", "1")
-	found := printClaudeTasksForSocket(&buf)
+	found := printToolTasksForSocket(&buf)
 	if !found {
 		t.Fatal("expected fallback socket to find claude session")
 	}

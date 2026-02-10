@@ -1291,7 +1291,7 @@ func handleSubcommand(cmd string) {
 		}
 		runCommand("tmux", "-L", socket, "list-sessions")
 	case "tasks":
-		printClaudeTasks()
+		printToolTasks()
 	case "kill-all":
 		// Kill sessions for current nesting level
 		socket := "pocketbot"
@@ -1308,16 +1308,17 @@ func handleSubcommand(cmd string) {
 	}
 }
 
-func printClaudeTasksForSocket(w io.Writer) bool {
+func printToolTasksForSocket(w io.Writer) bool {
 	names := listSessionsFn()
 	sort.Strings(names)
 
-	seenClaude := false
+	seen := false
 	for _, name := range names {
-		if toolFromSessionName(name) != "claude" {
+		tool := toolFromSessionName(name)
+		if tool != "claude" && tool != "codex" && tool != "cursor" {
 			continue
 		}
-		seenClaude = true
+		seen = true
 		tasks, err := sessionUserTasksFn(name)
 		if err != nil {
 			fmt.Fprintf(w, "%s: error reading tasks: %v\n", name, err)
@@ -1332,11 +1333,11 @@ func printClaudeTasksForSocket(w io.Writer) bool {
 			fmt.Fprintf(w, "  pid=%d ppid=%d state=%s cmd=%s\n", task.PID, task.PPID, task.State, task.Command)
 		}
 	}
-	return seenClaude
+	return seen
 }
 
-func printClaudeTasks() {
-	if printClaudeTasksForSocket(os.Stdout) {
+func printToolTasks() {
+	if printToolTasksForSocket(os.Stdout) {
 		return
 	}
 
@@ -1345,14 +1346,14 @@ func printClaudeTasks() {
 	level := os.Getenv("PB_LEVEL")
 	if level != "" {
 		_ = os.Unsetenv("PB_LEVEL")
-		found := printClaudeTasksForSocket(os.Stdout)
+		found := printToolTasksForSocket(os.Stdout)
 		_ = os.Setenv("PB_LEVEL", level)
 		if found {
 			return
 		}
 	}
 
-	fmt.Println("No claude sessions are running.")
+	fmt.Println("No claude/codex/cursor sessions are running.")
 }
 
 func runCommand(name string, args ...string) {
@@ -1398,7 +1399,7 @@ Usage:
   pb run          Run development version
   pb demo         Run a simple demo session (for testing)
   pb sessions     List active tmux sessions
-  pb tasks        List descendant processes for running claude sessions (spike)
+  pb tasks        List descendant processes for running claude/codex/cursor sessions (spike)
   pb kill-all     Kill all sessions
   pb help         Show this help
 
