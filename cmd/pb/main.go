@@ -25,6 +25,8 @@ var (
 	}
 )
 
+const maxTasksShownPerAgent = 6
+
 type viewState int
 
 const (
@@ -1329,8 +1331,15 @@ func printToolTasksForSocket(w io.Writer) bool {
 			fmt.Fprintln(w, "  (none)")
 			continue
 		}
-		for _, task := range tasks {
+		limit := len(tasks)
+		if limit > maxTasksShownPerAgent {
+			limit = maxTasksShownPerAgent
+		}
+		for _, task := range tasks[:limit] {
 			fmt.Fprintf(w, "  pid=%d ppid=%d state=%s cmd=%s\n", task.PID, task.PPID, task.State, task.Command)
+		}
+		if len(tasks) > limit {
+			fmt.Fprintf(w, "  +%d more\n", len(tasks)-limit)
 		}
 	}
 	return seen

@@ -959,3 +959,44 @@ func TestPrintToolTasksFallsBackToRootSocketWhenNested(t *testing.T) {
 		t.Fatalf("expected claude task line, got: %s", buf.String())
 	}
 }
+
+func TestPrintToolTasksCapsPerAgentOutput(t *testing.T) {
+	originalListSessions := listSessionsFn
+	originalSessionTasks := sessionUserTasksFn
+	defer func() {
+		listSessionsFn = originalListSessions
+		sessionUserTasksFn = originalSessionTasks
+	}()
+
+	listSessionsFn = func() []string { return []string{"codex"} }
+	sessionUserTasksFn = func(sessionName string) ([]tmux.Task, error) {
+		if sessionName != "codex" {
+			t.Fatalf("unexpected session: %s", sessionName)
+		}
+		var tasks []tmux.Task
+		for i := 0; i < 8; i++ {
+			tasks = append(tasks, tmux.Task{
+				PID:     1000 + i,
+				PPID:    1,
+				State:   "S",
+				Command: fmt.Sprintf("sleep %d", i),
+			})
+		}
+		return tasks, nil
+	}
+
+	var buf bytes.Buffer
+	if !printToolTasksForSocket(&buf) {
+		t.Fatal("expected tasks to be found")
+	}
+	out := buf.String()
+	if !contains(out, "codex: 8 task process(es)") {
+		t.Fatalf("expected total count header, got: %s", out)
+	}
+	if !contains(out, "+2 more") {
+		t.Fatalf("expected overflow marker, got: %s", out)
+	}
+	if contains(out, "pid=1007") {
+		t.Fatalf("expected pid=1007 to be hidden by cap, got: %s", out)
+	}
+}

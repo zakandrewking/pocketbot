@@ -208,6 +208,19 @@ func isInfrastructureCommand(command string) bool {
 	if strings.Contains(cmd, "gopls ** telemetry **") {
 		return true
 	}
+	// Common build/watch helper workers that are usually noise in task views.
+	if strings.Contains(cmd, "fork-ts-checker-webpack-plugin") {
+		return true
+	}
+	if strings.Contains(cmd, "@esbuild/") && strings.Contains(cmd, "--service=") {
+		return true
+	}
+	if strings.Contains(cmd, "worker.js") || strings.Contains(cmd, "/worker/") {
+		return true
+	}
+	if strings.Contains(cmd, "--inspect=localhost:") {
+		return true
+	}
 
 	return false
 }

@@ -70,3 +70,23 @@ func TestFilterUserTasksDropsInfrastructureOnlyTrees(t *testing.T) {
 		t.Fatalf("filterUserTasks infrastructure-only mismatch:\n got: %#v\nwant: %#v", got, want)
 	}
 }
+
+func TestFilterUserTasksDropsKnownNodeWorkerNoise(t *testing.T) {
+	tasks := []Task{
+		{PID: 1753, PPID: 55235, State: "S+", Command: "caffeinate -i -t 300"},
+		{PID: 3204, PPID: 3143, State: "Ss", Command: "/opt/homebrew/bin/node /repo/node_modules/nx/src/daemon/server/start.js"},
+		{PID: 3269, PPID: 3211, State: "S", Command: "/opt/homebrew/bin/node /repo/node_modules/fork-ts-checker-webpack-plugin/lib/typescript/worker/get-dependencies-worker.js"},
+		{PID: 3322, PPID: 3211, State: "S", Command: "/opt/homebrew/bin/node /repo/node_modules/fork-ts-checker-webpack-plugin/lib/typescript/worker/get-issues-worker.js"},
+		{PID: 3491, PPID: 3143, State: "S", Command: "/repo/node_modules/@esbuild/darwin-arm64/bin/esbuild --service=0.19.12 --ping"},
+		{PID: 4088, PPID: 3143, State: "S", Command: "/opt/homebrew/bin/node --inspect=localhost:9229 /repo/node_modules/@nx/js/src/executors/node/node-with-require-overrides"},
+	}
+
+	got := filterUserTasks(tasks)
+	want := []Task{
+		{PID: 1753, PPID: 55235, State: "S+", Command: "caffeinate -i -t 300"},
+		{PID: 3204, PPID: 3143, State: "Ss", Command: "/opt/homebrew/bin/node /repo/node_modules/nx/src/daemon/server/start.js"},
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("filterUserTasks node-noise mismatch:\n got: %#v\nwant: %#v", got, want)
+	}
+}
