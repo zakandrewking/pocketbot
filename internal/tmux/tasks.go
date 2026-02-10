@@ -164,29 +164,105 @@ func filterUserTasks(tasks []Task) []Task {
 		return nil
 	}
 
-	children := make(map[int]int)
+	byPID := make(map[int]Task, len(tasks))
+	children := make(map[int][]Task, len(tasks))
 	for _, t := range tasks {
-		children[t.PPID]++
+		byPID[t.PID] = t
+		children[t.PPID] = append(children[t.PPID], t)
 	}
 
-	var leaf []Task
+	roots := make([]Task, 0)
 	for _, t := range tasks {
-		if children[t.PID] == 0 {
-			leaf = append(leaf, t)
+		if _, ok := byPID[t.PPID]; !ok {
+			roots = append(roots, t)
 		}
 	}
+	sort.Slice(roots, func(i, j int) bool { return roots[i].PID < roots[j].PID })
 
-	var filtered []Task
-	for _, t := range leaf {
-		if isInfrastructureCommand(t.Command) {
+	selected := make(map[int]bool)
+	out := make([]Task, 0, len(roots))
+	for _, root := range roots {
+		rep, ok := chooseRepresentative(root, children)
+		if !ok {
 			continue
 		}
-		filtered = append(filtered, t)
+		if selected[rep.PID] {
+			continue
+		}
+		selected[rep.PID] = true
+		out = append(out, rep)
 	}
-	return filtered
+
+	sort.Slice(out, func(i, j int) bool {
+		return out[i].PID < out[j].PID
+	})
+	return out
 }
 
-func isInfrastructureCommand(command string) bool {
+type taskNode struct {
+	task  Task
+	depth int
+}
+
+func chooseRepresentative(root Task, children map[int][]Task) (Task, bool) {
+	queue := []taskNode{{task: root, depth: 0}}
+	bestScore := -1
+	bestDepth := 1 << 20
+	var best Task
+
+	for len(queue) > 0 {
+		node := queue[0]
+		queue = queue[1:]
+
+		score := taskScore(node.task.Command)
+		if score > bestScore ||
+			(score == bestScore && isShellWrapper(best.Command) && !isShellWrapper(node.task.Command)) ||
+			(score == bestScore && node.depth < bestDepth) {
+			bestScore = score
+			bestDepth = node.depth
+			best = node.task
+		}
+
+		for _, child := range children[node.task.PID] {
+			queue = append(queue, taskNode{task: child, depth: node.depth + 1})
+		}
+	}
+	if bestScore < 0 {
+		return Task{}, false
+	}
+	return best, true
+}
+
+func taskScore(command string) int {
+	if isNoiseCommand(command) {
+		return -1
+	}
+	cmd := strings.TrimSpace(strings.ToLower(command))
+	words := strings.Fields(cmd)
+	if len(words) == 0 {
+		return -1
+	}
+
+	// Strongly prefer explicit user orchestrators.
+	if filepath.Base(words[0]) == "make" {
+		return 100
+	}
+	if strings.Contains(cmd, " nx serve ") || strings.Contains(cmd, "/.bin/nx serve ") {
+		return 95
+	}
+	if strings.Contains(cmd, "npm exec nx serve") || strings.Contains(cmd, "npx nx serve") {
+		return 90
+	}
+	if strings.Contains(cmd, "npm exec") {
+		return 60
+	}
+	if isShellWrapper(command) {
+		return 10
+	}
+	return 50
+}
+
+func isNoiseCommand(command string) bool {
 	cmd := strings.TrimSpace(strings.ToLower(command))
 	if cmd == "" {
 		return true
@@ -198,11 +274,30 @@ func isInfrastructureCommand(command string) bool {
 	}
 	bin := filepath.Base(words[0])
 
-	// Shell wrappers and agent runtimes are typically not the "task".
+	// Agent runtimes and helpers are not user-level tasks.
 	switch bin {
-	case "sh", "bash", "zsh", "fish", "claude", "codex", "agent":
+	case "claude", "codex", "agent":
 		return true
-	case "gopls":
+	case "gopls", "caffeinate":
+		return true
+	}
+	if strings.Contains(cmd, " pb.test ") || strings.Contains(cmd, "/pb.test ") {
+		return true
+	}
+	if strings.Contains(cmd, " tmux.test ") || strings.Contains(cmd, "/tmux.test ") {
+		return true
+	}
+	if strings.HasPrefix(cmd, "ps -axo ") || strings.Contains(cmd, " ps -axo ") {
+		return true
+	}
+	if strings.Contains(cmd, "go run ./cmd/pb tasks") {
+		return true
+	}
+	if strings.Contains(cmd, "/exe/pb tasks") {
+		return true
+	}
+	if strings.Contains(cmd, "go test ./internal/tmux ./cmd/pb") ||
+		strings.Contains(cmd, "go test ./cmd/pb ./internal/tmux") {
 		return true
 	}
 	if strings.Contains(cmd, "gopls ** telemetry **") {
@@ -212,7 +307,16 @@ func isInfrastructureCommand(command string) bool {
 	if strings.Contains(cmd, "fork-ts-checker-webpack-plugin") {
 		return true
 	}
+	if strings.Contains(cmd, "nx/src/daemon/server/start.js") {
+		return true
+	}
 	if strings.Contains(cmd, "@esbuild/") && strings.Contains(cmd, "--service=") {
+		return true
+	}
+	if strings.Contains(cmd, "docker-buildx") && strings.Contains(cmd, " bake ") {
+		return true
+	}
+	if strings.Contains(cmd, "docker-compose compose up") {
 		return true
 	}
 	if strings.Contains(cmd, "worker.js") || strings.Contains(cmd, "/worker/") {
@@ -222,5 +326,18 @@ func isInfrastructureCommand(command string) bool {
 		return true
 	}
 
+	return false
+}
+
+func isShellWrapper(command string) bool {
+	cmd := strings.TrimSpace(strings.ToLower(command))
+	words := strings.Fields(cmd)
+	if len(words) == 0 {
+		return false
+	}
+	switch filepath.Base(words[0]) {
+	case "sh", "bash", "zsh", "fish":
+		return true
+	}
 	return false
 }

@@ -2,6 +2,7 @@ package tmux
 
 import (
 	"reflect"
+	"sort"
 	"testing"
 )
 
@@ -65,9 +66,8 @@ func TestFilterUserTasksDropsInfrastructureOnlyTrees(t *testing.T) {
 	}
 
 	got := filterUserTasks(tasks)
-	var want []Task
-	if !reflect.DeepEqual(got, want) {
-		t.Fatalf("filterUserTasks infrastructure-only mismatch:\n got: %#v\nwant: %#v", got, want)
+	if len(got) != 0 {
+		t.Fatalf("filterUserTasks infrastructure-only mismatch:\n got: %#v\nwant empty", got)
 	}
 }
 
@@ -82,11 +82,43 @@ func TestFilterUserTasksDropsKnownNodeWorkerNoise(t *testing.T) {
 	}
 
 	got := filterUserTasks(tasks)
+	if len(got) != 0 {
+		t.Fatalf("filterUserTasks node-noise mismatch:\n got: %#v\nwant empty", got)
+	}
+}
+
+func TestFilterUserTasksKeepsRelevantOrchestrators(t *testing.T) {
+	tasks := []Task{
+		{PID: 42091, PPID: 42080, State: "S", Command: "/Applications/Xcode.app/Contents/Developer/usr/bin/make integration-test-backend"},
+		{PID: 89262, PPID: 89236, State: "S", Command: "/opt/homebrew/bin/node /repo/node_modules/.bin/nx serve backend"},
+		{PID: 3087, PPID: 3056, State: "S", Command: "/opt/homebrew/bin/node /repo/node_modules/.bin/nx serve webportal --host=0.0.0.0"},
+		{PID: 42094, PPID: 55235, State: "S+", Command: "caffeinate -i -t 300"},
+		{PID: 42609, PPID: 42569, State: "S", Command: "/Users/zak/.docker/cli-plugins/docker-buildx bake --file - --progress rawjson"},
+	}
+
+	got := filterUserTasks(tasks)
+	sort.Slice(got, func(i, j int) bool { return got[i].PID < got[j].PID })
 	want := []Task{
-		{PID: 1753, PPID: 55235, State: "S+", Command: "caffeinate -i -t 300"},
-		{PID: 3204, PPID: 3143, State: "Ss", Command: "/opt/homebrew/bin/node /repo/node_modules/nx/src/daemon/server/start.js"},
+		{PID: 3087, PPID: 3056, State: "S", Command: "/opt/homebrew/bin/node /repo/node_modules/.bin/nx serve webportal --host=0.0.0.0"},
+		{PID: 42091, PPID: 42080, State: "S", Command: "/Applications/Xcode.app/Contents/Developer/usr/bin/make integration-test-backend"},
+		{PID: 89262, PPID: 89236, State: "S", Command: "/opt/homebrew/bin/node /repo/node_modules/.bin/nx serve backend"},
 	}
 	if !reflect.DeepEqual(got, want) {
-		t.Fatalf("filterUserTasks node-noise mismatch:\n got: %#v\nwant: %#v", got, want)
+		t.Fatalf("filterUserTasks orchestrator mismatch:\n got: %#v\nwant: %#v", got, want)
+	}
+}
+
+func TestFilterUserTasksSkipsShellWrapperWhenNoBetterSignal(t *testing.T) {
+	tasks := []Task{
+		{PID: 10, PPID: 1, State: "S", Command: "/bin/zsh -c sleep 300"},
+		{PID: 11, PPID: 10, State: "S", Command: "sleep 300"},
+	}
+
+	got := filterUserTasks(tasks)
+	want := []Task{
+		{PID: 11, PPID: 10, State: "S", Command: "sleep 300"},
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("filterUserTasks wrapper mismatch:\n got: %#v\nwant: %#v", got, want)
 	}
 }
