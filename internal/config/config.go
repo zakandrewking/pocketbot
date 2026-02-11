@@ -115,17 +115,32 @@ func Load() (*Config, error) {
 		}
 	}
 
+	_, hasClaudeBlock := raw["claude"]
+	hasClaudeEnabled := false
+	if hasClaudeBlock {
+		if claudeMap, ok := raw["claude"].(map[string]any); ok {
+			_, hasClaudeEnabled = claudeMap["enabled"]
+		}
+	}
+
 	var cfg Config
 	if err := yaml.Unmarshal(data, &cfg); err != nil {
 		return nil, fmt.Errorf("failed to parse config: %w", err)
 	}
 
 	// Apply defaults for missing fields
-	if cfg.Claude.Command == "" {
-		cfg.Claude.Command = "claude --continue --permission-mode acceptEdits"
-	}
-	if cfg.Claude.Key == "" {
-		cfg.Claude.Key = "c"
+	if !hasClaudeBlock {
+		cfg.Claude = DefaultConfig().Claude
+	} else {
+		if cfg.Claude.Command == "" {
+			cfg.Claude.Command = "claude --continue --permission-mode acceptEdits"
+		}
+		if cfg.Claude.Key == "" {
+			cfg.Claude.Key = "c"
+		}
+		if !hasClaudeEnabled {
+			cfg.Claude.Enabled = true
+		}
 	}
 	if !hasCodexBlock {
 		cfg.Codex = DefaultConfig().Codex

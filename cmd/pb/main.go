@@ -819,25 +819,37 @@ func (m model) updateHome(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		cwd := m.currentDir()
 		switch key {
 		case "c":
+			if !m.toolEnabled("claude") {
+				m.homeNotice = "claude is disabled in config"
+				return m, nil
+			}
 			if m.toolAlreadyRunningInDir("claude", cwd) {
 				m.homeNotice = "claude already running in this directory"
 				return m, nil
 			}
 			return m.createAndAttachTool("claude")
 		case "x":
+			if !m.toolEnabled("codex") {
+				m.homeNotice = "codex is disabled in config"
+				return m, nil
+			}
 			if m.toolAlreadyRunningInDir("codex", cwd) {
 				m.homeNotice = "codex already running in this directory"
 				return m, nil
 			}
 			return m.createAndAttachTool("codex")
 		case "u":
+			if !m.toolEnabled("cursor") {
+				m.homeNotice = "cursor is disabled in config"
+				return m, nil
+			}
 			if m.toolAlreadyRunningInDir("cursor", cwd) {
 				m.homeNotice = "cursor already running in this directory"
 				return m, nil
 			}
 			return m.createAndAttachTool("cursor")
 		default:
-			m.homeNotice = fmt.Sprintf("Unknown new target %q. Use c, x, or u.", key)
+			m.homeNotice = fmt.Sprintf("Unknown new target %q.", key)
 			return m, nil
 		}
 	case modeKillTool:
@@ -928,10 +940,22 @@ func (m model) updateHome(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	switch key {
 	case "c":
+		if !m.toolEnabled("claude") {
+			m.homeNotice = "claude is disabled in config"
+			return m, nil
+		}
 		return m.handleToolAttach("claude")
 	case "x":
+		if !m.toolEnabled("codex") {
+			m.homeNotice = "codex is disabled in config"
+			return m, nil
+		}
 		return m.handleToolAttach("codex")
 	case "u":
+		if !m.toolEnabled("cursor") {
+			m.homeNotice = "cursor is disabled in config"
+			return m, nil
+		}
 		return m.handleToolAttach("cursor")
 	case "z":
 		if !m.hasFasder {
@@ -1082,20 +1106,29 @@ func (m model) viewHome() string {
 		}
 	case modeNewTool:
 		cwd := m.currentDir()
-		if m.toolAlreadyRunningInDir("claude", cwd) {
-			lines = append(lines, metaStyle.Render("claude already running"))
-		} else {
-			lines = append(lines, fmt.Sprintf("%s new claude", keyStyle.Render("c")))
+		if m.toolEnabled("claude") {
+			if m.toolAlreadyRunningInDir("claude", cwd) {
+				lines = append(lines, metaStyle.Render("claude already running"))
+			} else {
+				lines = append(lines, fmt.Sprintf("%s new claude", keyStyle.Render("c")))
+			}
 		}
-		if m.toolAlreadyRunningInDir("codex", cwd) {
-			lines = append(lines, metaStyle.Render("codex already running"))
-		} else {
-			lines = append(lines, fmt.Sprintf("%s new codex", keyStyle.Render("x")))
+		if m.toolEnabled("codex") {
+			if m.toolAlreadyRunningInDir("codex", cwd) {
+				lines = append(lines, metaStyle.Render("codex already running"))
+			} else {
+				lines = append(lines, fmt.Sprintf("%s new codex", keyStyle.Render("x")))
+			}
 		}
-		if m.toolAlreadyRunningInDir("cursor", cwd) {
-			lines = append(lines, metaStyle.Render("cursor already running"))
-		} else {
-			lines = append(lines, fmt.Sprintf("%s new cursor", keyStyle.Render("u")))
+		if m.toolEnabled("cursor") {
+			if m.toolAlreadyRunningInDir("cursor", cwd) {
+				lines = append(lines, metaStyle.Render("cursor already running"))
+			} else {
+				lines = append(lines, fmt.Sprintf("%s new cursor", keyStyle.Render("u")))
+			}
+		}
+		if !m.toolEnabled("claude") && !m.toolEnabled("codex") && !m.toolEnabled("cursor") {
+			lines = append(lines, metaStyle.Render("all built-in tools are disabled"))
 		}
 		lines = append(lines, "esc cancel")
 	case modeKillTool:

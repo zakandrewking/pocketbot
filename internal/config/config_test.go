@@ -171,6 +171,76 @@ cursor:
 	}
 }
 
+func TestLoadValidConfigCursorDisabledWithMinimalBlock(t *testing.T) {
+	tmpDir := t.TempDir()
+	configDir := filepath.Join(tmpDir, ".config", "pocketbot")
+	os.MkdirAll(configDir, 0755)
+
+	configContent := `
+cursor:
+  enabled: false
+`
+	configPath := filepath.Join(configDir, "config.yaml")
+	if err := os.WriteFile(configPath, []byte(configContent), 0644); err != nil {
+		t.Fatalf("Failed to write test config: %v", err)
+	}
+
+	origHome := os.Getenv("HOME")
+	os.Setenv("HOME", tmpDir)
+	defer os.Setenv("HOME", origHome)
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Failed to load config: %v", err)
+	}
+
+	if cfg.Cursor.Enabled {
+		t.Error("Expected cursor to remain disabled when explicitly set to false")
+	}
+	if cfg.Cursor.Command != "agent resume" {
+		t.Errorf("Expected default cursor command, got %q", cfg.Cursor.Command)
+	}
+	if cfg.Cursor.Key != "u" {
+		t.Errorf("Expected default cursor key 'u', got %q", cfg.Cursor.Key)
+	}
+}
+
+func TestLoadDefaultsEnabledWhenBlocksMissing(t *testing.T) {
+	tmpDir := t.TempDir()
+	configDir := filepath.Join(tmpDir, ".config", "pocketbot")
+	os.MkdirAll(configDir, 0755)
+
+	configContent := `
+sessions:
+  - name: "test"
+    command: "echo ok"
+    key: "t"
+`
+	configPath := filepath.Join(configDir, "config.yaml")
+	if err := os.WriteFile(configPath, []byte(configContent), 0644); err != nil {
+		t.Fatalf("Failed to write test config: %v", err)
+	}
+
+	origHome := os.Getenv("HOME")
+	os.Setenv("HOME", tmpDir)
+	defer os.Setenv("HOME", origHome)
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Failed to load config: %v", err)
+	}
+
+	if !cfg.Claude.Enabled {
+		t.Error("Expected claude enabled by default when claude block is missing")
+	}
+	if !cfg.Codex.Enabled {
+		t.Error("Expected codex enabled by default when codex block is missing")
+	}
+	if !cfg.Cursor.Enabled {
+		t.Error("Expected cursor enabled by default when cursor block is missing")
+	}
+}
+
 func TestValidateDuplicateKeys(t *testing.T) {
 	cfg := &Config{
 		Claude: ClaudeConfig{

@@ -98,6 +98,70 @@ func TestNEntersNewMode(t *testing.T) {
 	}
 }
 
+func TestNModeHidesDisabledTool(t *testing.T) {
+	cfg := config.DefaultConfig()
+	cfg.Cursor.Enabled = false
+	m := model{
+		config:      cfg,
+		sessions:    map[string]*tmux.Session{},
+		bindings:    map[string]commandBinding{},
+		windowWidth: 80,
+		viewState:   viewHome,
+		mode:        modeHome,
+	}
+
+	updatedModel, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("n")})
+	m = updatedModel.(model)
+	view := m.View()
+	if contains(view, "u new cursor") {
+		t.Fatalf("expected cursor option hidden when disabled, got: %s", view)
+	}
+}
+
+func TestDisabledToolHotkeyIgnoredInHome(t *testing.T) {
+	cfg := config.DefaultConfig()
+	cfg.Cursor.Enabled = false
+	m := model{
+		config:      cfg,
+		sessions:    map[string]*tmux.Session{},
+		bindings:    map[string]commandBinding{},
+		windowWidth: 80,
+		viewState:   viewHome,
+		mode:        modeHome,
+	}
+
+	updatedModel, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("u")})
+	m = updatedModel.(model)
+	if m.shouldAttach {
+		t.Fatal("disabled cursor key should not attach")
+	}
+	if !contains(m.homeNotice, "cursor is disabled in config") {
+		t.Fatalf("expected disabled notice, got %q", m.homeNotice)
+	}
+}
+
+func TestDisabledToolHotkeyIgnoredInNewMode(t *testing.T) {
+	cfg := config.DefaultConfig()
+	cfg.Cursor.Enabled = false
+	m := model{
+		config:      cfg,
+		sessions:    map[string]*tmux.Session{},
+		bindings:    map[string]commandBinding{},
+		windowWidth: 80,
+		viewState:   viewHome,
+		mode:        modeNewTool,
+	}
+
+	updatedModel, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("u")})
+	m = updatedModel.(model)
+	if m.shouldAttach {
+		t.Fatal("disabled cursor key in new mode should not attach")
+	}
+	if !contains(m.homeNotice, "cursor is disabled in config") {
+		t.Fatalf("expected disabled notice, got %q", m.homeNotice)
+	}
+}
+
 func TestNewModeDisablesClaudeWhenAlreadyRunningInCurrentDirectory(t *testing.T) {
 	requireTmuxSessionCreation(t)
 
