@@ -569,6 +569,9 @@ func TestKillModeXStillOpensPickerWhenMultipleCodexSessions(t *testing.T) {
 	if m.mode != modePickKill {
 		t.Fatalf("expected modePickKill, got %v", m.mode)
 	}
+	if m.shouldAttach {
+		t.Fatal("x in kill mode should never trigger attach")
+	}
 	if len(m.pickerTargets) != 2 {
 		t.Fatalf("expected 2 picker targets, got %d", len(m.pickerTargets))
 	}

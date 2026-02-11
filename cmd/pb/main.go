@@ -844,9 +844,12 @@ func (m model) updateHome(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 	case modeKillTool:
-		runningClaude := len(m.runningToolSessions("claude")) > 0
-		runningCodex := len(m.runningToolSessions("codex")) > 0
-		runningCursor := len(m.runningToolSessions("cursor")) > 0
+		claudeTargets := m.runningToolSessions("claude")
+		codexTargets := m.runningToolSessions("codex")
+		cursorTargets := m.runningToolSessions("cursor")
+		runningClaude := len(claudeTargets) > 0
+		runningCodex := len(codexTargets) > 0
+		runningCursor := len(cursorTargets) > 0
 		if !runningClaude && !runningCodex && !runningCursor {
 			m.mode = modeHome
 			m.homeNotice = "no kill targets are running"
@@ -858,16 +861,28 @@ func (m model) updateHome(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				m.homeNotice = "claude is not running"
 				return m, nil
 			}
+			if len(claudeTargets) > 1 {
+				m = m.preparePicker("claude", modePickKill)
+				return m, nil
+			}
 			return m.handleToolKill("claude")
 		case "x":
 			if !runningCodex {
 				m.homeNotice = "codex is not running"
 				return m, nil
 			}
+			if len(codexTargets) > 1 {
+				m = m.preparePicker("codex", modePickKill)
+				return m, nil
+			}
 			return m.handleToolKill("codex")
 		case "u":
 			if !runningCursor {
 				m.homeNotice = "cursor is not running"
+				return m, nil
+			}
+			if len(cursorTargets) > 1 {
+				m = m.preparePicker("cursor", modePickKill)
 				return m, nil
 			}
 			return m.handleToolKill("cursor")
