@@ -100,9 +100,6 @@ func initialModel() model {
 		os.Exit(1)
 	}
 
-	// Check for directory mismatches with existing sessions
-	checkDirectoryMismatch()
-
 	// Load configuration
 	cfg, err := config.Load()
 	if err != nil {
