@@ -1090,14 +1090,35 @@ func (m model) viewHome() string {
 		runningClaude := len(m.runningToolSessions("claude")) > 0
 		runningCodex := len(m.runningToolSessions("codex")) > 0
 		runningCursor := len(m.runningToolSessions("cursor")) > 0
+		renderKillRows := func(tool, key string) {
+			names := m.runningToolSessions(tool)
+			if len(names) == 0 {
+				return
+			}
+			if len(names) == 1 {
+				lines = append(lines, fmt.Sprintf("%s kill %s", keyStyle.Render(key), tool))
+				return
+			}
+			for i, name := range names {
+				letter := alphaKey(i)
+				if letter == "" {
+					break
+				}
+				repo := "-"
+				if binding, ok := m.bindings[name]; ok {
+					repo = repoFromCwd(binding.Cwd)
+				}
+				lines = append(lines, fmt.Sprintf("%s %s repo:%s", keyStyle.Render("("+key+" "+letter+")"), tool, repoNameStyle.Render(repo)))
+			}
+		}
 		if runningClaude {
-			lines = append(lines, fmt.Sprintf("%s kill claude", keyStyle.Render("c")))
+			renderKillRows("claude", "c")
 		}
 		if runningCodex {
-			lines = append(lines, fmt.Sprintf("%s kill codex", keyStyle.Render("x")))
+			renderKillRows("codex", "x")
 		}
 		if runningCursor {
-			lines = append(lines, fmt.Sprintf("%s kill cursor", keyStyle.Render("u")))
+			renderKillRows("cursor", "u")
 		}
 		lines = append(lines, fmt.Sprintf("%s kill task", keyStyle.Render("t")))
 		lines = append(lines, "esc cancel")

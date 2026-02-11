@@ -506,6 +506,74 @@ func TestKillModeShowsOnlyRunningTargets(t *testing.T) {
 	}
 }
 
+func TestKillModeShowsSecondKeyHintsForMultipleToolSessions(t *testing.T) {
+	cfg := config.DefaultConfig()
+	m := model{
+		config: cfg,
+		sessions: map[string]*tmux.Session{
+			"codex":   tmux.NewSession("codex", cfg.Codex.Command),
+			"codex-2": tmux.NewSession("codex-2", cfg.Codex.Command),
+		},
+		bindings:    map[string]commandBinding{},
+		windowWidth: 80,
+		viewState:   viewHome,
+		mode:        modeKillTool,
+	}
+	if err := m.sessions["codex"].Start(); err != nil {
+		t.Skipf("tmux sessions cannot be started in this environment: %v", err)
+	}
+	if err := m.sessions["codex-2"].Start(); err != nil {
+		_ = m.sessions["codex"].Stop()
+		t.Skipf("tmux sessions cannot be started in this environment: %v", err)
+	}
+	defer m.sessions["codex"].Stop()
+	defer m.sessions["codex-2"].Stop()
+
+	view := m.View()
+	if !contains(view, "(x a) codex repo:") || !contains(view, "(x b) codex repo:") {
+		t.Fatalf("expected second-key hints for multiple codex sessions, got: %s", view)
+	}
+}
+
+func TestKillModeXStillOpensPickerWhenMultipleCodexSessions(t *testing.T) {
+	cfg := config.DefaultConfig()
+	m := model{
+		config: cfg,
+		sessions: map[string]*tmux.Session{
+			"codex":   tmux.NewSession("codex", cfg.Codex.Command),
+			"codex-2": tmux.NewSession("codex-2", cfg.Codex.Command),
+		},
+		bindings:    map[string]commandBinding{},
+		windowWidth: 80,
+		viewState:   viewHome,
+		mode:        modeKillTool,
+	}
+	if err := m.sessions["codex"].Start(); err != nil {
+		t.Skipf("tmux sessions cannot be started in this environment: %v", err)
+	}
+	if err := m.sessions["codex-2"].Start(); err != nil {
+		_ = m.sessions["codex"].Stop()
+		t.Skipf("tmux sessions cannot be started in this environment: %v", err)
+	}
+	defer m.sessions["codex"].Stop()
+	defer m.sessions["codex-2"].Stop()
+
+	updatedModel, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("x")})
+	m, ok := updatedModel.(model)
+	if !ok {
+		t.Fatal("Update should return a model")
+	}
+	if cmd != nil {
+		t.Fatal("x in kill mode should not quit")
+	}
+	if m.mode != modePickKill {
+		t.Fatalf("expected modePickKill, got %v", m.mode)
+	}
+	if len(m.pickerTargets) != 2 {
+		t.Fatalf("expected 2 picker targets, got %d", len(m.pickerTargets))
+	}
+}
+
 func TestKDoesNotEnterKillModeWhenNothingRunning(t *testing.T) {
 	m := model{
 		config:      config.DefaultConfig(),
