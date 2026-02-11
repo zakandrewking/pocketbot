@@ -100,20 +100,30 @@ func CreateSession(name, command string) error {
 // AttachSession attaches to an existing tmux session
 // This takes over stdin/stdout until the user detaches
 func AttachSession(name string) error {
-	// Show a floating message for 3 seconds when attaching
-	// This appears as a small overlay in the center of the screen
-	level := getNestingLevel()
-	msg := "Ctrl+D to detach"
-	if level > 0 {
-		msg = fmt.Sprintf("Ctrl+D to detach (pb level %d)", level)
-	}
-	cmd("display-message", "-t", name, msg).Run()
+	showDetachOverlay(name)
 
 	c := cmd("attach-session", "-t", name)
 	c.Stdin = os.Stdin
 	c.Stdout = os.Stdout
 	c.Stderr = os.Stderr
 	return c.Run()
+}
+
+func detachOverlayMessage(level int) string {
+	msg := "Ctrl+D to detach"
+	if level > 0 {
+		return fmt.Sprintf("%s (pb level %d)", msg, level)
+	}
+	return msg
+}
+
+func showDetachOverlay(name string) {
+	msg := detachOverlayMessage(getNestingLevel())
+	// Prefer top-right so we don't reserve a full line in the UI.
+	// Fall back to default display-message behavior on older tmux builds.
+	if err := cmd("display-message", "-d", "2500", "-x", "R", "-y", "0", "-t", name, msg).Run(); err != nil {
+		cmd("display-message", "-d", "2500", "-t", name, msg).Run()
+	}
 }
 
 // KillSession terminates a tmux session
