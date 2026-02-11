@@ -2,19 +2,13 @@
 
 PocketBot (`pb`) is a tmux-backed launcher for Claude, Codex, Cursor, and other long-running terminal workflows.
 
-It is built for fast, repeatable keyboard control on small screens: single letters, letter-pair pickers, and `Ctrl+<letter>` globals.
+<img width="381" height="164" alt="image" src="https://github.com/user-attachments/assets/61be48d1-b85e-4233-a3f4-099b7bebdf59" />
 
 ## What It Does Well
 
 - Keeps sessions alive in the background (tmux-backed).
 - Lets you detach and reattach quickly (`Ctrl+D` to detach from a session).
 - Supports multiple Claude/Codex/Cursor instances per machine.
-- Uses a compact 20-line mobile-first home view.
-- Shows the current working directory at the top of home.
-- Switches views automatically:
-  - fewer than 10 Claude+Codex+Cursor instances: detailed rows
-  - 10 or more: consolidated summary with drill-down picker
-- Supports custom commands as first-class sessions.
 
 ## Install
 
@@ -23,10 +17,6 @@ Prerequisites:
 - `go` (to build/install `pb`)
 - `tmux` (required at runtime)
 - `fasder` (optional, enables `z` directory jump)
-- tool CLIs (optional, only if you use them):
-  - `claude`
-  - `codex`
-  - `agent` (Cursor CLI)
 
 ```bash
 go install github.com/zakandrewking/pocketbot/cmd/pb@latest
