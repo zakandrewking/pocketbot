@@ -820,7 +820,6 @@ func (m model) updateHome(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		switch key {
 		case "c":
 			if !m.toolEnabled("claude") {
-				m.homeNotice = "claude is disabled in config"
 				return m, nil
 			}
 			if m.toolAlreadyRunningInDir("claude", cwd) {
@@ -830,7 +829,6 @@ func (m model) updateHome(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m.createAndAttachTool("claude")
 		case "x":
 			if !m.toolEnabled("codex") {
-				m.homeNotice = "codex is disabled in config"
 				return m, nil
 			}
 			if m.toolAlreadyRunningInDir("codex", cwd) {
@@ -840,7 +838,6 @@ func (m model) updateHome(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m.createAndAttachTool("codex")
 		case "u":
 			if !m.toolEnabled("cursor") {
-				m.homeNotice = "cursor is disabled in config"
 				return m, nil
 			}
 			if m.toolAlreadyRunningInDir("cursor", cwd) {
@@ -866,6 +863,9 @@ func (m model) updateHome(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		switch key {
 		case "c":
+			if !m.toolEnabled("claude") {
+				return m, nil
+			}
 			if !runningClaude {
 				m.homeNotice = "claude is not running"
 				return m, nil
@@ -876,6 +876,9 @@ func (m model) updateHome(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			}
 			return m.handleToolKill("claude")
 		case "x":
+			if !m.toolEnabled("codex") {
+				return m, nil
+			}
 			if !runningCodex {
 				m.homeNotice = "codex is not running"
 				return m, nil
@@ -886,6 +889,9 @@ func (m model) updateHome(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			}
 			return m.handleToolKill("codex")
 		case "u":
+			if !m.toolEnabled("cursor") {
+				return m, nil
+			}
 			if !runningCursor {
 				m.homeNotice = "cursor is not running"
 				return m, nil
@@ -941,20 +947,17 @@ func (m model) updateHome(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch key {
 	case "c":
 		if !m.toolEnabled("claude") {
-			m.homeNotice = "claude is disabled in config"
-			return m, nil
+			break
 		}
 		return m.handleToolAttach("claude")
 	case "x":
 		if !m.toolEnabled("codex") {
-			m.homeNotice = "codex is disabled in config"
-			return m, nil
+			break
 		}
 		return m.handleToolAttach("codex")
 	case "u":
 		if !m.toolEnabled("cursor") {
-			m.homeNotice = "cursor is disabled in config"
-			return m, nil
+			break
 		}
 		return m.handleToolAttach("cursor")
 	case "z":

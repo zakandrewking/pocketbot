@@ -135,8 +135,8 @@ func TestDisabledToolHotkeyIgnoredInHome(t *testing.T) {
 	if m.shouldAttach {
 		t.Fatal("disabled cursor key should not attach")
 	}
-	if !contains(m.homeNotice, "cursor is disabled in config") {
-		t.Fatalf("expected disabled notice, got %q", m.homeNotice)
+	if m.homeNotice != "" {
+		t.Fatalf("expected no notice for disabled key noop, got %q", m.homeNotice)
 	}
 }
 
@@ -157,8 +157,8 @@ func TestDisabledToolHotkeyIgnoredInNewMode(t *testing.T) {
 	if m.shouldAttach {
 		t.Fatal("disabled cursor key in new mode should not attach")
 	}
-	if !contains(m.homeNotice, "cursor is disabled in config") {
-		t.Fatalf("expected disabled notice, got %q", m.homeNotice)
+	if m.homeNotice != "" {
+		t.Fatalf("expected no notice for disabled key noop, got %q", m.homeNotice)
 	}
 }
 
