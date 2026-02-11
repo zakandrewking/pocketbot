@@ -8,7 +8,6 @@ import (
 	"strings"
 	"sync"
 	"time"
-	"unicode/utf8"
 )
 
 // IdleTimeout is how long without changes before marking session as idle
@@ -101,69 +100,11 @@ func CreateSession(name, command string) error {
 // AttachSession attaches to an existing tmux session
 // This takes over stdin/stdout until the user detaches
 func AttachSession(name string) error {
-	showDetachOverlay(name)
-
 	c := cmd("attach-session", "-t", name)
 	c.Stdin = os.Stdin
 	c.Stdout = os.Stdout
 	c.Stderr = os.Stderr
 	return c.Run()
-}
-
-func detachOverlayMessage(level int) string {
-	msg := "Ctrl+D to detach"
-	if level > 0 {
-		return fmt.Sprintf("%s (pb level %d)", msg, level)
-	}
-	return msg
-}
-
-func showDetachOverlay(name string) {
-	msg := detachOverlayMessage(getNestingLevel())
-	// Prefer a tiny top-right popup so we don't reserve a full line in the UI.
-	// Fall back to display-message when popup is unavailable.
-	if err := showDetachPopup(name, msg); err == nil {
-		return
-	}
-	if err := cmd("display-message", "-d", "2500", "-x", "R", "-y", "0", "-t", name, msg).Run(); err == nil {
-		return
-	}
-	cmd("display-message", "-d", "2500", "-t", name, msg).Run()
-}
-
-func showDetachPopup(name, msg string) error {
-	width := strconv.Itoa(detachPopupWidth(msg))
-	command := "printf %s " + shellSingleQuote(msg) + "; sleep 2"
-	return cmd(
-		"display-popup",
-		"-E",
-		"-B",
-		"-x", "R",
-		"-y", "0",
-		"-w", width,
-		"-h", "1",
-		"-t", name,
-		command,
-	).Run()
-}
-
-func detachPopupWidth(msg string) int {
-	// Add breathing room around the message while keeping popup compact.
-	width := utf8.RuneCountInString(msg) + 4
-	if width < 24 {
-		return 24
-	}
-	if width > 96 {
-		return 96
-	}
-	return width
-}
-
-func shellSingleQuote(s string) string {
-	if s == "" {
-		return "''"
-	}
-	return "'" + strings.ReplaceAll(s, "'", `'"'"'`) + "'"
 }
 
 // KillSession terminates a tmux session
