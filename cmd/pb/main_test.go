@@ -162,6 +162,72 @@ func TestDisabledToolHotkeyIgnoredInNewMode(t *testing.T) {
 	}
 }
 
+func TestRemappedCursorKeyShownInNewMode(t *testing.T) {
+	cfg := config.DefaultConfig()
+	cfg.Cursor.Key = "r"
+	m := model{
+		config:      cfg,
+		sessions:    map[string]*tmux.Session{},
+		bindings:    map[string]commandBinding{},
+		windowWidth: 80,
+		viewState:   viewHome,
+		mode:        modeNewTool,
+	}
+
+	view := m.View()
+	if !contains(view, "r new cursor") {
+		t.Fatalf("expected remapped cursor key in new mode, got: %s", view)
+	}
+	if contains(view, "u new cursor") {
+		t.Fatalf("did not expect default cursor key in new mode, got: %s", view)
+	}
+}
+
+func TestRemappedCursorKeyHandledInNewMode(t *testing.T) {
+	requireTmuxSessionCreation(t)
+
+	originalCwd, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("failed to get cwd: %v", err)
+	}
+	defer os.Chdir(originalCwd)
+
+	launchDir := t.TempDir()
+	if err := os.Chdir(launchDir); err != nil {
+		t.Fatalf("failed to chdir: %v", err)
+	}
+
+	sessionName := fmt.Sprintf("cursor-testremap-%d", time.Now().UnixNano())
+	if err := tmux.CreateSession(sessionName, "sleep 60"); err != nil {
+		t.Skipf("tmux session unavailable in this environment: %v", err)
+	}
+	defer tmux.KillSession(sessionName)
+
+	cfg := config.DefaultConfig()
+	cfg.Cursor.Key = "r"
+	m := model{
+		config: cfg,
+		sessions: map[string]*tmux.Session{
+			sessionName: tmux.NewSession(sessionName, "sleep 60"),
+		},
+		bindings:  map[string]commandBinding{},
+		viewState: viewHome,
+		mode:      modeNewTool,
+	}
+
+	updatedModel, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("r")})
+	m = updatedModel.(model)
+	if !contains(m.homeNotice, "cursor already running in this directory") {
+		t.Fatalf("expected remapped key to resolve cursor action, got notice %q", m.homeNotice)
+	}
+
+	updatedModel, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("u")})
+	m = updatedModel.(model)
+	if !contains(m.homeNotice, "Unknown new target") {
+		t.Fatalf("expected old key to be unknown in new mode, got %q", m.homeNotice)
+	}
+}
+
 func TestNewModeDisablesClaudeWhenAlreadyRunningInCurrentDirectory(t *testing.T) {
 	requireTmuxSessionCreation(t)
 

@@ -305,6 +305,30 @@ func (m model) toolEnabled(tool string) bool {
 	}
 }
 
+func (m model) toolForKey(key string) string {
+	for _, tool := range []string{"claude", "codex", "cursor"} {
+		if !m.toolEnabled(tool) {
+			continue
+		}
+		if m.keyForTool(tool) == key {
+			return tool
+		}
+	}
+	return ""
+}
+
+func (m model) disabledToolKey(key string) bool {
+	for _, tool := range []string{"claude", "codex", "cursor"} {
+		if m.toolEnabled(tool) {
+			continue
+		}
+		if m.keyForTool(tool) == key {
+			return true
+		}
+	}
+	return false
+}
+
 func (m model) nextSessionName(tool string) string {
 	names := m.runningToolSessions(tool)
 	used := make(map[string]bool)
@@ -817,38 +841,19 @@ func (m model) updateHome(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 	case modeNewTool:
 		cwd := m.currentDir()
-		switch key {
-		case "c":
-			if !m.toolEnabled("claude") {
+		tool := m.toolForKey(key)
+		if tool == "" {
+			if m.disabledToolKey(key) {
 				return m, nil
 			}
-			if m.toolAlreadyRunningInDir("claude", cwd) {
-				m.homeNotice = "claude already running in this directory"
-				return m, nil
-			}
-			return m.createAndAttachTool("claude")
-		case "x":
-			if !m.toolEnabled("codex") {
-				return m, nil
-			}
-			if m.toolAlreadyRunningInDir("codex", cwd) {
-				m.homeNotice = "codex already running in this directory"
-				return m, nil
-			}
-			return m.createAndAttachTool("codex")
-		case "u":
-			if !m.toolEnabled("cursor") {
-				return m, nil
-			}
-			if m.toolAlreadyRunningInDir("cursor", cwd) {
-				m.homeNotice = "cursor already running in this directory"
-				return m, nil
-			}
-			return m.createAndAttachTool("cursor")
-		default:
 			m.homeNotice = fmt.Sprintf("Unknown new target %q.", key)
 			return m, nil
 		}
+		if m.toolAlreadyRunningInDir(tool, cwd) {
+			m.homeNotice = fmt.Sprintf("%s already running in this directory", tool)
+			return m, nil
+		}
+		return m.createAndAttachTool(tool)
 	case modeKillTool:
 		claudeTargets := m.runningToolSessions("claude")
 		codexTargets := m.runningToolSessions("codex")
@@ -862,50 +867,35 @@ func (m model) updateHome(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		switch key {
-		case "c":
-			if !m.toolEnabled("claude") {
-				return m, nil
-			}
-			if !runningClaude {
-				m.homeNotice = "claude is not running"
-				return m, nil
-			}
-			if len(claudeTargets) > 1 {
-				m = m.preparePicker("claude", modePickKill)
-				return m, nil
-			}
-			return m.handleToolKill("claude")
-		case "x":
-			if !m.toolEnabled("codex") {
-				return m, nil
-			}
-			if !runningCodex {
-				m.homeNotice = "codex is not running"
-				return m, nil
-			}
-			if len(codexTargets) > 1 {
-				m = m.preparePicker("codex", modePickKill)
-				return m, nil
-			}
-			return m.handleToolKill("codex")
-		case "u":
-			if !m.toolEnabled("cursor") {
-				return m, nil
-			}
-			if !runningCursor {
-				m.homeNotice = "cursor is not running"
-				return m, nil
-			}
-			if len(cursorTargets) > 1 {
-				m = m.preparePicker("cursor", modePickKill)
-				return m, nil
-			}
-			return m.handleToolKill("cursor")
 		case "t":
 			return m.enterTaskKillPicker()
 		default:
-			m.homeNotice = fmt.Sprintf("Unknown kill target %q.", key)
-			return m, nil
+			tool := m.toolForKey(key)
+			if tool == "" {
+				if m.disabledToolKey(key) {
+					return m, nil
+				}
+				m.homeNotice = fmt.Sprintf("Unknown kill target %q.", key)
+				return m, nil
+			}
+			var targets []string
+			switch tool {
+			case "claude":
+				targets = claudeTargets
+			case "codex":
+				targets = codexTargets
+			case "cursor":
+				targets = cursorTargets
+			}
+			if len(targets) == 0 {
+				m.homeNotice = fmt.Sprintf("%s is not running", tool)
+				return m, nil
+			}
+			if len(targets) > 1 {
+				m = m.preparePicker(tool, modePickKill)
+				return m, nil
+			}
+			return m.handleToolKill(tool)
 		}
 	case modePickAttach:
 		target, ok := m.pickerTargets[key]
@@ -945,21 +935,6 @@ func (m model) updateHome(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	}
 
 	switch key {
-	case "c":
-		if !m.toolEnabled("claude") {
-			break
-		}
-		return m.handleToolAttach("claude")
-	case "x":
-		if !m.toolEnabled("codex") {
-			break
-		}
-		return m.handleToolAttach("codex")
-	case "u":
-		if !m.toolEnabled("cursor") {
-			break
-		}
-		return m.handleToolAttach("cursor")
 	case "z":
 		if !m.hasFasder {
 			m.homeNotice = "fasder not found; install fasder to use z"
@@ -984,6 +959,10 @@ func (m model) updateHome(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.mode = modeKillTool
 		m.homeNotice = ""
 		return m, nil
+	}
+
+	if tool := m.toolForKey(key); tool != "" {
+		return m.handleToolAttach(tool)
 	}
 
 	// Keep custom configured sessions working with their own keys.
@@ -1113,21 +1092,21 @@ func (m model) viewHome() string {
 			if m.toolAlreadyRunningInDir("claude", cwd) {
 				lines = append(lines, metaStyle.Render("claude already running"))
 			} else {
-				lines = append(lines, fmt.Sprintf("%s new claude", keyStyle.Render("c")))
+				lines = append(lines, fmt.Sprintf("%s new claude", keyStyle.Render(m.keyForTool("claude"))))
 			}
 		}
 		if m.toolEnabled("codex") {
 			if m.toolAlreadyRunningInDir("codex", cwd) {
 				lines = append(lines, metaStyle.Render("codex already running"))
 			} else {
-				lines = append(lines, fmt.Sprintf("%s new codex", keyStyle.Render("x")))
+				lines = append(lines, fmt.Sprintf("%s new codex", keyStyle.Render(m.keyForTool("codex"))))
 			}
 		}
 		if m.toolEnabled("cursor") {
 			if m.toolAlreadyRunningInDir("cursor", cwd) {
 				lines = append(lines, metaStyle.Render("cursor already running"))
 			} else {
-				lines = append(lines, fmt.Sprintf("%s new cursor", keyStyle.Render("u")))
+				lines = append(lines, fmt.Sprintf("%s new cursor", keyStyle.Render(m.keyForTool("cursor"))))
 			}
 		}
 		if !m.toolEnabled("claude") && !m.toolEnabled("codex") && !m.toolEnabled("cursor") {
@@ -1159,14 +1138,14 @@ func (m model) viewHome() string {
 				lines = append(lines, fmt.Sprintf("%s %s repo:%s", keyStyle.Render("("+key+" "+letter+")"), tool, repoNameStyle.Render(repo)))
 			}
 		}
-		if runningClaude {
-			renderKillRows("claude", "c")
+		if runningClaude && m.toolEnabled("claude") {
+			renderKillRows("claude", m.keyForTool("claude"))
 		}
-		if runningCodex {
-			renderKillRows("codex", "x")
+		if runningCodex && m.toolEnabled("codex") {
+			renderKillRows("codex", m.keyForTool("codex"))
 		}
-		if runningCursor {
-			renderKillRows("cursor", "u")
+		if runningCursor && m.toolEnabled("cursor") {
+			renderKillRows("cursor", m.keyForTool("cursor"))
 		}
 		lines = append(lines, fmt.Sprintf("%s kill task", keyStyle.Render("t")))
 		lines = append(lines, "esc cancel")
