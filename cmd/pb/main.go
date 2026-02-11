@@ -265,6 +265,10 @@ func (m model) toolSessionsInDir(tool, cwd string) []string {
 	return out
 }
 
+func (m model) toolAlreadyRunningInDir(tool, cwd string) bool {
+	return len(m.toolSessionsInDir(tool, cwd)) > 0
+}
+
 func (m model) commandForTool(tool string) string {
 	switch tool {
 	case "claude":
@@ -815,12 +819,25 @@ func (m model) updateHome(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 	case modeNewTool:
+		cwd := m.currentDir()
 		switch key {
 		case "c":
+			if m.toolAlreadyRunningInDir("claude", cwd) {
+				m.homeNotice = "claude already running in this directory"
+				return m, nil
+			}
 			return m.createAndAttachTool("claude")
 		case "x":
+			if m.toolAlreadyRunningInDir("codex", cwd) {
+				m.homeNotice = "codex already running in this directory"
+				return m, nil
+			}
 			return m.createAndAttachTool("codex")
 		case "u":
+			if m.toolAlreadyRunningInDir("cursor", cwd) {
+				m.homeNotice = "cursor already running in this directory"
+				return m, nil
+			}
 			return m.createAndAttachTool("cursor")
 		default:
 			m.homeNotice = fmt.Sprintf("Unknown new target %q. Use c, x, or u.", key)
@@ -1052,12 +1069,23 @@ func (m model) viewHome() string {
 			lines = append(lines, suggestionStyle.Render(row))
 		}
 	case modeNewTool:
-		lines = append(lines,
-			fmt.Sprintf("%s new claude", keyStyle.Render("c")),
-			fmt.Sprintf("%s new codex", keyStyle.Render("x")),
-			fmt.Sprintf("%s new cursor", keyStyle.Render("u")),
-			"esc cancel",
-		)
+		cwd := m.currentDir()
+		if m.toolAlreadyRunningInDir("claude", cwd) {
+			lines = append(lines, metaStyle.Render("claude already running"))
+		} else {
+			lines = append(lines, fmt.Sprintf("%s new claude", keyStyle.Render("c")))
+		}
+		if m.toolAlreadyRunningInDir("codex", cwd) {
+			lines = append(lines, metaStyle.Render("codex already running"))
+		} else {
+			lines = append(lines, fmt.Sprintf("%s new codex", keyStyle.Render("x")))
+		}
+		if m.toolAlreadyRunningInDir("cursor", cwd) {
+			lines = append(lines, metaStyle.Render("cursor already running"))
+		} else {
+			lines = append(lines, fmt.Sprintf("%s new cursor", keyStyle.Render("u")))
+		}
+		lines = append(lines, "esc cancel")
 	case modeKillTool:
 		runningClaude := len(m.runningToolSessions("claude")) > 0
 		runningCodex := len(m.runningToolSessions("codex")) > 0

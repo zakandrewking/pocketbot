@@ -98,6 +98,59 @@ func TestNEntersNewMode(t *testing.T) {
 	}
 }
 
+func TestNewModeDisablesClaudeWhenAlreadyRunningInCurrentDirectory(t *testing.T) {
+	requireTmuxSessionCreation(t)
+
+	originalCwd, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("failed to get cwd: %v", err)
+	}
+	defer os.Chdir(originalCwd)
+
+	launchDir := t.TempDir()
+	if err := os.Chdir(launchDir); err != nil {
+		t.Fatalf("failed to chdir: %v", err)
+	}
+
+	sessionName := fmt.Sprintf("claude-testdisable-%d", time.Now().UnixNano())
+	if err := tmux.CreateSession(sessionName, "sleep 60"); err != nil {
+		t.Skipf("tmux session unavailable in this environment: %v", err)
+	}
+	defer tmux.KillSession(sessionName)
+
+	cfg := config.DefaultConfig()
+	m := model{
+		config: cfg,
+		sessions: map[string]*tmux.Session{
+			sessionName: tmux.NewSession(sessionName, "sleep 60"),
+		},
+		bindings:  map[string]commandBinding{},
+		viewState: viewHome,
+		mode:      modeHome,
+	}
+
+	updatedModel, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("n")})
+	m = updatedModel.(model)
+	if cmd != nil {
+		t.Fatal("n should not quit")
+	}
+	if !contains(m.View(), "claude already running") {
+		t.Fatalf("expected disabled claude indicator in new mode, got: %s", m.View())
+	}
+
+	updatedModel, cmd = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("c")})
+	m = updatedModel.(model)
+	if cmd != nil {
+		t.Fatal("c should be disabled in new mode when already running in dir")
+	}
+	if !contains(m.homeNotice, "claude already running in this directory") {
+		t.Fatalf("expected already-running notice, got %q", m.homeNotice)
+	}
+	if m.shouldAttach {
+		t.Fatal("disabled c should not trigger attach")
+	}
+}
+
 func TestKEntersKillMode(t *testing.T) {
 	cfg := config.DefaultConfig()
 	m := model{
