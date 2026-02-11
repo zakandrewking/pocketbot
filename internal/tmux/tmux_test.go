@@ -70,3 +70,34 @@ func TestDetachOverlayMessage(t *testing.T) {
 		})
 	}
 }
+
+func TestDetachPopupWidth(t *testing.T) {
+	if got := detachPopupWidth("x"); got != 24 {
+		t.Fatalf("detachPopupWidth short = %d, want 24", got)
+	}
+	msg := "Ctrl+D to detach"
+	if got := detachPopupWidth(msg); got != 24 {
+		t.Fatalf("detachPopupWidth normal = %d, want 24", got)
+	}
+	long := "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+	if got := detachPopupWidth(long); got != 96 {
+		t.Fatalf("detachPopupWidth long = %d, want 96", got)
+	}
+}
+
+func TestShellSingleQuote(t *testing.T) {
+	tests := []struct {
+		in   string
+		want string
+	}{
+		{in: "", want: "''"},
+		{in: "abc", want: "'abc'"},
+		{in: "a'b", want: `'a'"'"'b'`},
+	}
+
+	for _, tt := range tests {
+		if got := shellSingleQuote(tt.in); got != tt.want {
+			t.Fatalf("shellSingleQuote(%q) = %q, want %q", tt.in, got, tt.want)
+		}
+	}
+}
