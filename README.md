@@ -4,11 +4,11 @@ PocketBot (`pb`) is a tmux-backed launcher for Claude, Codex, Cursor, and other 
 
 <img width="381" height="164" alt="image" src="https://github.com/user-attachments/assets/61be48d1-b85e-4233-a3f4-099b7bebdf59" />
 
-## What It Does Well
+## What is pocketbot?
 
-- Keeps sessions alive in the background (tmux-backed).
-- Lets you detach and reattach quickly (`Ctrl+D` to detach from a session).
-- Supports multiple Claude/Codex/Cursor instances per machine.
+- A commandline app that keeps sessions alive in the background (using tmux)
+- Lets you detach and reattach quickly (`Ctrl+D` to detach from a session)
+- Supports multiple Claude/Codex/Cursor instances per machine
 
 ## Install
 
