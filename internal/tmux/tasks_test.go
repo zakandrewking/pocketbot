@@ -87,6 +87,17 @@ func TestFilterUserTasksDropsKnownNodeWorkerNoise(t *testing.T) {
 	}
 }
 
+func TestFilterUserTasksDropsAgentLauncherWrapper(t *testing.T) {
+	tasks := []Task{
+		{PID: 101, PPID: 100, State: "S", Command: "node /opt/homebrew/bin/codex resume --last"},
+	}
+
+	got := filterUserTasks(tasks)
+	if len(got) != 0 {
+		t.Fatalf("filterUserTasks launcher-wrapper mismatch:\n got: %#v\nwant empty", got)
+	}
+}
+
 func TestFilterUserTasksKeepsRelevantOrchestrators(t *testing.T) {
 	tasks := []Task{
 		{PID: 42091, PPID: 42080, State: "S", Command: "/Applications/Xcode.app/Contents/Developer/usr/bin/make integration-test-backend"},

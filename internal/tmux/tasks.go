@@ -299,6 +299,9 @@ func isNoiseCommand(command string) bool {
 	if len(words) == 0 {
 		return true
 	}
+	if isAgentLauncherCommand(cmd) {
+		return true
+	}
 	bin := filepath.Base(words[0])
 
 	// Agent runtimes and helpers are not user-level tasks.
@@ -353,6 +356,21 @@ func isNoiseCommand(command string) bool {
 		return true
 	}
 
+	return false
+}
+
+func isAgentLauncherCommand(cmd string) bool {
+	// Suppress launcher wrappers that only represent entering an agent session,
+	// e.g. `node /opt/homebrew/bin/codex resume --last`.
+	if strings.Contains(cmd, "codex resume --last") {
+		return true
+	}
+	if strings.Contains(cmd, "agent resume") {
+		return true
+	}
+	if strings.Contains(cmd, "claude --continue --permission-mode acceptedits") {
+		return true
+	}
 	return false
 }
 
