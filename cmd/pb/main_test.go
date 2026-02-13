@@ -707,6 +707,51 @@ func TestKillModeXStillOpensPickerWhenMultipleCodexSessions(t *testing.T) {
 	}
 }
 
+func TestHomeAttachKeyOpensPickerWhenMultipleToolSessionsExist(t *testing.T) {
+	requireTmuxSessionCreation(t)
+
+	cfg := config.DefaultConfig()
+	m := model{
+		config: cfg,
+		sessions: map[string]*tmux.Session{
+			"codex":   tmux.NewSession("codex", cfg.Codex.Command),
+			"codex-2": tmux.NewSession("codex-2", cfg.Codex.Command),
+		},
+		bindings:    map[string]commandBinding{},
+		windowWidth: 80,
+		viewState:   viewHome,
+		mode:        modeHome,
+		getwd:       os.Getwd,
+	}
+	if err := m.sessions["codex"].Start(); err != nil {
+		t.Skipf("tmux sessions cannot be started in this environment: %v", err)
+	}
+	if err := m.sessions["codex-2"].Start(); err != nil {
+		_ = m.sessions["codex"].Stop()
+		t.Skipf("tmux sessions cannot be started in this environment: %v", err)
+	}
+	defer m.sessions["codex"].Stop()
+	defer m.sessions["codex-2"].Stop()
+
+	updatedModel, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(cfg.Codex.Key)})
+	m, ok := updatedModel.(model)
+	if !ok {
+		t.Fatal("Update should return a model")
+	}
+	if cmd != nil {
+		t.Fatal("attach key with multiple sessions should not quit immediately")
+	}
+	if m.mode != modePickAttach {
+		t.Fatalf("expected modePickAttach, got %v", m.mode)
+	}
+	if m.shouldAttach {
+		t.Fatal("attach key with multiple sessions should not immediately attach")
+	}
+	if len(m.pickerTargets) != 2 {
+		t.Fatalf("expected 2 picker targets, got %d", len(m.pickerTargets))
+	}
+}
+
 func TestKDoesNotEnterKillModeWhenNothingRunning(t *testing.T) {
 	m := model{
 		config:      config.DefaultConfig(),

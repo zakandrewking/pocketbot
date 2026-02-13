@@ -580,27 +580,6 @@ func (m model) preparePicker(tool string, pickMode uiMode) model {
 }
 
 func (m model) handleToolAttach(tool string) (model, tea.Cmd) {
-	cwd := m.currentDir()
-	if cwd != "" {
-		inDir := m.toolSessionsInDir(tool, cwd)
-		switch len(inDir) {
-		case 1:
-			return m.startAndAttachSession(inDir[0], "")
-		default:
-			if len(inDir) == 0 {
-				break
-			}
-			m.mode = modePickAttach
-			m.pickerTool = tool
-			m.pickerTargets = make(map[string]string)
-			for i, name := range inDir {
-				m.pickerTargets[pickerKey(i)] = name
-			}
-			m.homeNotice = "multiple sessions in this directory"
-			return m, nil
-		}
-	}
-
 	targets := m.runningToolSessions(tool)
 	switch len(targets) {
 	case 0:
