@@ -1104,7 +1104,7 @@ func (m model) viewHome() string {
 			lines = append(lines, suggestionStyle.Render(row))
 		}
 	case modeNewTool:
-		dangerStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#FF5555")).Bold(true)
+		yoloStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#FF8A00")).Bold(true)
 		cwd := m.currentDir()
 		if m.toolEnabled("claude") {
 			if m.toolAlreadyRunningInDir("claude", cwd) {
@@ -1131,7 +1131,7 @@ func (m model) viewHome() string {
 			lines = append(lines, metaStyle.Render("all built-in tools are disabled"))
 		}
 		if m.newToolYolo {
-			lines = append(lines, fmt.Sprintf("%s yolo: %s", keyStyle.Render("y"), dangerStyle.Render("ON (skip all permissions)")))
+			lines = append(lines, fmt.Sprintf("%s yolo: %s", keyStyle.Render("y"), yoloStyle.Render("ON (skip all permissions)")))
 		} else {
 			lines = append(lines, fmt.Sprintf("%s yolo: off", keyStyle.Render("y")))
 		}
