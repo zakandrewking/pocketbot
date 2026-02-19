@@ -57,6 +57,7 @@ type commandBinding struct {
 	SessionName string
 	Cwd         string
 	Running     bool
+	Yolo        bool
 	LastSeen    time.Time
 }
 
@@ -165,6 +166,7 @@ func (m *model) refreshBindings() {
 			SessionName: name,
 			Cwd:         tmux.GetSessionCwd(name),
 			Running:     true,
+			Yolo:        tmux.GetSessionYolo(name),
 			LastSeen:    time.Now(),
 		}
 		live[name] = true
@@ -578,6 +580,7 @@ func (m model) createAndAttachTool(tool string) (model, tea.Cmd) {
 		m.homeNotice = fmt.Sprintf("%s is not configured", tool)
 		return m, nil
 	}
+	yoloEnabled := m.newToolYolo
 	if m.newToolYolo {
 		command = yoloCommandForTool(tool, command)
 		m.newToolYolo = false
@@ -587,6 +590,9 @@ func (m model) createAndAttachTool(tool string) (model, tea.Cmd) {
 	if err := tmux.CreateSession(name, launchCommand); err != nil {
 		m.homeNotice = fmt.Sprintf("failed to create %s: %v", tool, err)
 		return m, nil
+	}
+	if err := tmux.SetSessionYolo(name, yoloEnabled); err != nil {
+		// Non-fatal: session still starts even if metadata cannot be persisted.
 	}
 	m.sessions[name] = tmux.NewSession(name, command)
 	return m.startAndAttachSession(name, command)
@@ -1057,7 +1063,6 @@ func (m model) viewHome() string {
 		Bold(true)
 	alertStyle := lipgloss.NewStyle().
 		Foreground(lipgloss.Color("#4DA3FF"))
-
 	title := "Welcome to PocketBot"
 	if level := os.Getenv("PB_LEVEL"); level != "" {
 		title = fmt.Sprintf("Welcome to PocketBot (level %s)", level)
@@ -1263,6 +1268,7 @@ func (m model) detailedRows(tool string, names []string) []string {
 	idleStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#999999"))
 	repoLabelStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#888888"))
 	repoNameStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#7D56F4")).Bold(true)
+	yoloStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#FF8A00")).Bold(true)
 	taskStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#4DA3FF"))
 	taskDetailStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#AAAAAA"))
 	key := m.keyForTool(tool)
@@ -1301,6 +1307,9 @@ func (m model) detailedRows(tool string, names []string) []string {
 		}
 		repoText := repoLabelStyle.Render("repo:") + repoNameStyle.Render(repo)
 		rowParts := []string{keyStyle.Render("(" + join + ")"), name, repoText}
+		if binding, ok := m.bindings[name]; ok && binding.Yolo {
+			rowParts = append(rowParts, yoloStyle.Render("(yolo)"))
+		}
 		if !m.showTaskDetails {
 			if n := m.taskCounts[name]; n > 0 {
 				rowParts = append(rowParts, taskStyle.Render(fmt.Sprintf("tasks:%d", n)))

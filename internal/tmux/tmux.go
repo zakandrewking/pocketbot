@@ -144,6 +144,25 @@ func GetSessionCommand(sessionName string) string {
 	return strings.TrimSpace(string(out))
 }
 
+// SetSessionYolo marks whether a session was launched in yolo mode.
+func SetSessionYolo(sessionName string, enabled bool) error {
+	val := "0"
+	if enabled {
+		val = "1"
+	}
+	return cmd("set-option", "-t", sessionName, "@pb_yolo", val).Run()
+}
+
+// GetSessionYolo reports whether a session was launched in yolo mode.
+func GetSessionYolo(sessionName string) bool {
+	out, err := cmd("show-options", "-t", sessionName, "-v", "@pb_yolo").Output()
+	if err != nil {
+		return false
+	}
+	v := strings.TrimSpace(strings.ToLower(string(out)))
+	return v == "1" || v == "on" || v == "true" || v == "yes"
+}
+
 // ListSessions returns all active session names
 func ListSessions() []string {
 	out, err := cmd("list-sessions", "-F", "#{session_name}").Output()

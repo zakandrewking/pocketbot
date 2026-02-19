@@ -873,6 +873,25 @@ func TestYKeyTogglesYoloInNewMode(t *testing.T) {
 	}
 }
 
+func TestDetailedRowsShowsPerSessionYoloBadge(t *testing.T) {
+	cfg := config.DefaultConfig()
+	m := model{
+		config: cfg,
+		bindings: map[string]commandBinding{
+			"codex": {SessionName: "codex", Cwd: "/repo", Running: true, Yolo: true},
+		},
+		sessions: map[string]*tmux.Session{},
+	}
+
+	rows := m.detailedRows("codex", []string{"codex"})
+	if len(rows) != 1 {
+		t.Fatalf("expected one row, got %d", len(rows))
+	}
+	if !contains(rows[0], "(yolo)") {
+		t.Fatalf("expected per-session yolo badge, got: %s", rows[0])
+	}
+}
+
 func TestEscResetsYoloInNewMode(t *testing.T) {
 	m := model{
 		config:      config.DefaultConfig(),
