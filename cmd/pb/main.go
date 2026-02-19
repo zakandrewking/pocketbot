@@ -83,6 +83,7 @@ type model struct {
 	shouldAttach    bool
 	sessionToAttach string // Name of session to attach to
 	homeNotice      string
+	newToolYolo     bool
 	dirQuery        string
 	dirSuggestions  []string
 	dirSelection    int
@@ -475,14 +476,41 @@ func fallbackCommand(tool, command string) string {
 		if command == "claude --continue --permission-mode acceptEdits" {
 			return "claude --continue --permission-mode acceptEdits || claude --permission-mode acceptEdits"
 		}
+		if command == "claude --continue --dangerously-skip-permissions" {
+			return "claude --continue --dangerously-skip-permissions || claude --dangerously-skip-permissions"
+		}
 	case "codex":
 		if command == "codex resume --last" {
 			return "codex resume --last || codex"
+		}
+		if command == "codex --yolo resume --last" {
+			return "codex --yolo resume --last || codex --yolo"
 		}
 	case "cursor":
 		if command == "agent resume" {
 			return "agent resume || agent"
 		}
+	}
+	return command
+}
+
+// yoloCommandForTool returns the command modified to run in yolo/auto-approve mode.
+// Claude uses --dangerously-skip-permissions (replaces --permission-mode acceptEdits).
+// Codex uses --yolo (global flag placed before subcommand).
+// Cursor agent has no CLI yolo flag; the command is returned unchanged.
+func yoloCommandForTool(tool, command string) string {
+	switch tool {
+	case "claude":
+		cmd := strings.ReplaceAll(command, "--permission-mode acceptEdits", "--dangerously-skip-permissions")
+		if cmd == command {
+			cmd = strings.TrimSpace(command) + " --dangerously-skip-permissions"
+		}
+		return strings.TrimSpace(cmd)
+	case "codex":
+		if strings.HasPrefix(command, "codex ") {
+			return "codex --yolo " + command[len("codex "):]
+		}
+		return command
 	}
 	return command
 }
@@ -549,6 +577,10 @@ func (m model) createAndAttachTool(tool string) (model, tea.Cmd) {
 	if command == "" {
 		m.homeNotice = fmt.Sprintf("%s is not configured", tool)
 		return m, nil
+	}
+	if m.newToolYolo {
+		command = yoloCommandForTool(tool, command)
+		m.newToolYolo = false
 	}
 	name := m.nextSessionName(tool)
 	launchCommand := fallbackCommand(tool, command)
@@ -757,12 +789,14 @@ func (m model) updateHome(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if m.mode == modeNewTool || m.mode == modeKillTool {
 			m.mode = modeHome
 			m.homeNotice = ""
+			m.newToolYolo = false
 			return m, nil
 		}
 	case "esc":
 		if m.mode != modeHome {
 			m.mode = modeHome
 			m.homeNotice = ""
+			m.newToolYolo = false
 			return m, nil
 		}
 	}
@@ -819,6 +853,10 @@ func (m model) updateHome(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 	case modeNewTool:
+		if key == "y" {
+			m.newToolYolo = !m.newToolYolo
+			return m, nil
+		}
 		cwd := m.currentDir()
 		tool := m.toolForKey(key)
 		if tool == "" {
@@ -1066,6 +1104,7 @@ func (m model) viewHome() string {
 			lines = append(lines, suggestionStyle.Render(row))
 		}
 	case modeNewTool:
+		dangerStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#FF5555")).Bold(true)
 		cwd := m.currentDir()
 		if m.toolEnabled("claude") {
 			if m.toolAlreadyRunningInDir("claude", cwd) {
@@ -1090,6 +1129,11 @@ func (m model) viewHome() string {
 		}
 		if !m.toolEnabled("claude") && !m.toolEnabled("codex") && !m.toolEnabled("cursor") {
 			lines = append(lines, metaStyle.Render("all built-in tools are disabled"))
+		}
+		if m.newToolYolo {
+			lines = append(lines, fmt.Sprintf("%s yolo: %s", keyStyle.Render("y"), dangerStyle.Render("ON (skip all permissions)")))
+		} else {
+			lines = append(lines, fmt.Sprintf("%s yolo: off", keyStyle.Render("y")))
 		}
 		lines = append(lines, "esc cancel")
 	case modeKillTool:
@@ -1537,7 +1581,7 @@ Interactive mode keybindings:
   x               Attach codex (picker if multiple, create if none)
   u               Attach cursor (picker if multiple, create if none)
   z               Jump directory with fasder query
-  n               New instance (then c/x/u)
+  n               New instance (then y to toggle yolo, then c/x/u)
   k               Kill one instance (then c/x/u and picker if needed)
   t               Toggle per-session task lines on home screen
   Esc             Go back/cancel in menus

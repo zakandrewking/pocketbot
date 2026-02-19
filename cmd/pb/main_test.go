@@ -778,6 +778,143 @@ func TestKDoesNotEnterKillModeWhenNothingRunning(t *testing.T) {
 	}
 }
 
+func TestYoloCommandForTool(t *testing.T) {
+	tests := []struct {
+		name    string
+		tool    string
+		command string
+		want    string
+	}{
+		{
+			name:    "claude default command",
+			tool:    "claude",
+			command: "claude --continue --permission-mode acceptEdits",
+			want:    "claude --continue --dangerously-skip-permissions",
+		},
+		{
+			name:    "claude custom command without permission-mode",
+			tool:    "claude",
+			command: "claude --continue",
+			want:    "claude --continue --dangerously-skip-permissions",
+		},
+		{
+			name:    "codex default command",
+			tool:    "codex",
+			command: "codex resume --last",
+			want:    "codex --yolo resume --last",
+		},
+		{
+			name:    "codex custom command",
+			tool:    "codex",
+			command: "codex --model o4-mini",
+			want:    "codex --yolo --model o4-mini",
+		},
+		{
+			name:    "cursor unchanged (no yolo flag)",
+			tool:    "cursor",
+			command: "agent resume",
+			want:    "agent resume",
+		},
+		{
+			name:    "unknown tool unchanged",
+			tool:    "other",
+			command: "sometool --flag",
+			want:    "sometool --flag",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := yoloCommandForTool(tt.tool, tt.command)
+			if got != tt.want {
+				t.Fatalf("yoloCommandForTool(%q, %q) = %q, want %q", tt.tool, tt.command, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestYKeyTogglesYoloInNewMode(t *testing.T) {
+	m := model{
+		config:      config.DefaultConfig(),
+		sessions:    map[string]*tmux.Session{},
+		bindings:    map[string]commandBinding{},
+		windowWidth: 80,
+		viewState:   viewHome,
+		mode:        modeNewTool,
+	}
+
+	// Toggle on
+	updatedModel, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("y")})
+	m = updatedModel.(model)
+	if cmd != nil {
+		t.Fatal("y should not quit")
+	}
+	if m.mode != modeNewTool {
+		t.Fatal("y should stay in new-tool mode")
+	}
+	if !m.newToolYolo {
+		t.Fatal("y should enable yolo mode")
+	}
+	if !contains(m.View(), "yolo: ON") {
+		t.Fatalf("expected yolo ON indicator in view, got: %s", m.View())
+	}
+
+	// Toggle off
+	updatedModel, cmd = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("y")})
+	m = updatedModel.(model)
+	if cmd != nil {
+		t.Fatal("y should not quit")
+	}
+	if m.newToolYolo {
+		t.Fatal("second y press should disable yolo mode")
+	}
+	if contains(m.View(), "yolo: ON") {
+		t.Fatalf("expected yolo off after toggle, got: %s", m.View())
+	}
+}
+
+func TestEscResetsYoloInNewMode(t *testing.T) {
+	m := model{
+		config:      config.DefaultConfig(),
+		sessions:    map[string]*tmux.Session{},
+		bindings:    map[string]commandBinding{},
+		windowWidth: 80,
+		viewState:   viewHome,
+		mode:        modeNewTool,
+		newToolYolo: true,
+	}
+
+	updatedModel, _ := m.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	m = updatedModel.(model)
+	if m.newToolYolo {
+		t.Fatal("esc should reset yolo flag")
+	}
+	if m.mode != modeHome {
+		t.Fatal("esc should return to home mode")
+	}
+}
+
+func TestDResetsYoloInNewMode(t *testing.T) {
+	m := model{
+		config:      config.DefaultConfig(),
+		sessions:    map[string]*tmux.Session{},
+		bindings:    map[string]commandBinding{},
+		windowWidth: 80,
+		viewState:   viewHome,
+		mode:        modeNewTool,
+		newToolYolo: true,
+	}
+
+	updatedModel, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("d")})
+	m = updatedModel.(model)
+	if m.newToolYolo {
+		t.Fatal("d should reset yolo flag")
+	}
+	if m.mode != modeHome {
+		t.Fatal("d should return to home mode")
+	}
+}
+
 func TestFallbackCommand(t *testing.T) {
 	tests := []struct {
 		name    string
@@ -808,6 +945,18 @@ func TestFallbackCommand(t *testing.T) {
 			tool:    "codex",
 			command: "codex --model gpt-5",
 			want:    "codex --model gpt-5",
+		},
+		{
+			name:    "claude yolo fallback",
+			tool:    "claude",
+			command: "claude --continue --dangerously-skip-permissions",
+			want:    "claude --continue --dangerously-skip-permissions || claude --dangerously-skip-permissions",
+		},
+		{
+			name:    "codex yolo fallback",
+			tool:    "codex",
+			command: "codex --yolo resume --last",
+			want:    "codex --yolo resume --last || codex --yolo",
 		},
 	}
 
