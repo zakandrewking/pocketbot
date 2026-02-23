@@ -1237,9 +1237,6 @@ func (m model) viewHome() string {
 	if m.homeNotice != "" {
 		lines = append(lines, alertStyle.Render(m.homeNotice))
 	}
-	if count := m.mismatchCountForCurrentDir(); count > 0 && m.mode == modeHome {
-		lines = append(lines, alertStyle.Render(fmt.Sprintf("%d session(s) running from different directories", count)))
-	}
 
 	switch m.mode {
 	case modeDirJump:
@@ -1460,7 +1457,7 @@ func (m model) viewHome() string {
 		codex := m.runningToolSessions("codex")
 		cursor := m.runningToolSessions("cursor")
 		total := len(claude) + len(codex) + len(cursor)
-		lines = append(lines, metaStyle.Render(fmt.Sprintf("instances: %d", total)))
+		lines = append(lines, "")
 		if total < 10 {
 			lines = append(lines, m.detailedRows("claude", claude)...)
 			lines = append(lines, m.detailedRows("codex", codex)...)
@@ -1470,6 +1467,7 @@ func (m model) viewHome() string {
 			lines = append(lines, m.summaryRow("codex", codex))
 			lines = append(lines, m.summaryRow("cursor", cursor))
 		}
+		lines = append(lines, "")
 		lines = append(lines,
 			fmt.Sprintf("%s jump-dir   %s new   %s kill", keyStyle.Render("z"), keyStyle.Render("n"), keyStyle.Render("k")),
 			fmt.Sprintf("%s %s   %s rename", keyStyle.Render("t"), map[bool]string{true: "hide tasks", false: "show tasks"}[m.showTaskDetails], keyStyle.Render("r")),

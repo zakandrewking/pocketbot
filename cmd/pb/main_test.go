@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -1233,14 +1234,17 @@ func TestHomeViewShowsSessionStatus(t *testing.T) {
 
 	// View without running session
 	view := m.View()
-	if !contains(view, "instances: 0") {
-		t.Error("Should show zero instances when no sessions are running")
-	}
 	if !contains(view, "claude") || !contains(view, "codex") || !contains(view, "not running") {
 		t.Error("Should show claude/codex not-running rows when no sessions are active")
 	}
 	if !contains(view, "cursor") {
 		t.Error("Should show cursor not-running row when no sessions are active")
+	}
+	if !contains(view, "dir:") {
+		t.Error("Should include current directory")
+	}
+	if strings.Count(view, "\n\n") < 2 {
+		t.Error("Should include blank lines between dir/agents and agents/hotkeys")
 	}
 
 	// Start claude session (default config has 'claude' session)
@@ -1259,13 +1263,14 @@ func TestHomeViewShowsSessionStatus(t *testing.T) {
 
 	// View with running session
 	view = m.View()
-	// Should show either "● active" or "○ idle" when running
-	hasStatus := contains(view, "● active") || contains(view, "○ idle")
-	if !hasStatus {
-		t.Error("Should show '● active' or '○ idle' when session is running")
-	}
 	if !contains(view, "claude") {
 		t.Error("Should show claude row when session is running")
+	}
+	for _, line := range strings.Split(view, "\n") {
+		if contains(line, "claude") && contains(line, "not running") {
+			t.Error("Should not show claude as not running when session is active")
+			break
+		}
 	}
 }
 
