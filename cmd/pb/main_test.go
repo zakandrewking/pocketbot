@@ -1024,6 +1024,55 @@ func TestIntegrationCreateThenRenameClaudeDoesNotDuplicateInHomeView(t *testing.
 	}
 }
 
+func TestIntegrationRenameToPrefixedNameDoesNotKeepOriginalRow(t *testing.T) {
+	requireTmuxSessionCreation(t)
+
+	socketLevel := fmt.Sprintf("itest-prefix-%d", time.Now().UnixNano())
+	t.Setenv("PB_LEVEL", socketLevel)
+	defer tmux.KillServer()
+
+	cfg := config.DefaultConfig()
+	m := model{
+		config:        cfg,
+		sessions:      map[string]*tmux.Session{},
+		sessionTools:  map[string]string{},
+		bindings:      map[string]commandBinding{},
+		taskCounts:    map[string]int{},
+		taskCommands:  map[string][]string{},
+		pickerTargets: map[string]string{},
+		viewState:     viewHome,
+		mode:          modeHome,
+		getwd:         os.Getwd,
+		chdir:         os.Chdir,
+	}
+
+	createdModel, _ := m.createAndAttachTool("codex")
+	m = createdModel
+	createdName := m.sessionToAttach
+	if createdName == "" {
+		t.Fatal("expected created codex session name")
+	}
+	if createdName != "codex" {
+		t.Fatalf("expected first codex session to be named codex, got %q", createdName)
+	}
+
+	m.mode = modeRenameInput
+	m.renameTarget = "codex"
+	m.renameInput = "codex-pb"
+	m.shouldAttach = false
+	m.sessionToAttach = ""
+	m = m.applyRenameTarget()
+	m.homeNotice = ""
+
+	view := m.View()
+	if !contains(view, "codex-pb repo:") {
+		t.Fatalf("expected renamed codex-pb row, got: %s", view)
+	}
+	if contains(view, "(x a) codex repo:") || contains(view, "(x) codex repo:") {
+		t.Fatalf("expected original codex row to be absent, got: %s", view)
+	}
+}
+
 func TestHomeAttachKeyOpensPickerWhenMultipleToolSessionsExist(t *testing.T) {
 	requireTmuxSessionCreation(t)
 
@@ -1070,6 +1119,10 @@ func TestHomeAttachKeyOpensPickerWhenMultipleToolSessionsExist(t *testing.T) {
 }
 
 func TestKDoesNotEnterKillModeWhenNothingRunning(t *testing.T) {
+	level := fmt.Sprintf("test-empty-%d", time.Now().UnixNano())
+	t.Setenv("PB_LEVEL", level)
+	defer tmux.KillServer()
+
 	m := model{
 		config:      config.DefaultConfig(),
 		sessions:    map[string]*tmux.Session{},

@@ -44,6 +44,11 @@ func cmd(args ...string) *exec.Cmd {
 	return exec.Command("tmux", fullArgs...)
 }
 
+// exactTarget forces tmux to match a session name exactly instead of by prefix.
+func exactTarget(name string) string {
+	return "=" + name
+}
+
 // Available checks if tmux is installed
 func Available() bool {
 	_, err := exec.LookPath("tmux")
@@ -52,7 +57,7 @@ func Available() bool {
 
 // SessionExists checks if a tmux session exists
 func SessionExists(name string) bool {
-	return cmd("has-session", "-t", name).Run() == nil
+	return cmd("has-session", "-t", exactTarget(name)).Run() == nil
 }
 
 // CreateSession creates a new detached tmux session running the given command
@@ -70,16 +75,16 @@ func CreateSession(name, command string) error {
 	}
 
 	// Store the launch directory as a tmux session option (for easy querying)
-	if err := cmd("set-option", "-t", name, "@pb_cwd", cwd).Run(); err != nil {
+	if err := cmd("set-option", "-t", exactTarget(name), "@pb_cwd", cwd).Run(); err != nil {
 		// Non-fatal - just means we can't check directory later
 	}
 	// Store which configured command this session belongs to.
-	if err := cmd("set-option", "-t", name, "@pb_command", name).Run(); err != nil {
+	if err := cmd("set-option", "-t", exactTarget(name), "@pb_command", name).Run(); err != nil {
 		// Non-fatal - binding can still fall back to session name.
 	}
 
 	// Hide status bar to save screen space
-	if err := cmd("set-option", "-t", name, "status", "off").Run(); err != nil {
+	if err := cmd("set-option", "-t", exactTarget(name), "status", "off").Run(); err != nil {
 		return err
 	}
 
@@ -90,7 +95,7 @@ func CreateSession(name, command string) error {
 	}
 
 	// Show brief message on attach about Ctrl+D (stays for 3 seconds)
-	if err := cmd("set-option", "-t", name, "display-time", "3000").Run(); err != nil {
+	if err := cmd("set-option", "-t", exactTarget(name), "display-time", "3000").Run(); err != nil {
 		return err
 	}
 
@@ -100,7 +105,7 @@ func CreateSession(name, command string) error {
 // AttachSession attaches to an existing tmux session
 // This takes over stdin/stdout until the user detaches
 func AttachSession(name string) error {
-	c := cmd("attach-session", "-t", name)
+	c := cmd("attach-session", "-t", exactTarget(name))
 	c.Stdin = os.Stdin
 	c.Stdout = os.Stdout
 	c.Stderr = os.Stderr
@@ -109,12 +114,12 @@ func AttachSession(name string) error {
 
 // KillSession terminates a tmux session
 func KillSession(name string) error {
-	return cmd("kill-session", "-t", name).Run()
+	return cmd("kill-session", "-t", exactTarget(name)).Run()
 }
 
 // RenameSession renames a tmux session.
 func RenameSession(oldName, newName string) error {
-	return cmd("rename-session", "-t", oldName, newName).Run()
+	return cmd("rename-session", "-t", exactTarget(oldName), newName).Run()
 }
 
 // KillServer kills the entire pocketbot tmux server
@@ -124,7 +129,7 @@ func KillServer() error {
 
 // CapturePane captures the content of a pane (for testing)
 func CapturePane(sessionName string) (string, error) {
-	out, err := cmd("capture-pane", "-t", sessionName, "-p").Output()
+	out, err := cmd("capture-pane", "-t", exactTarget(sessionName), "-p").Output()
 	if err != nil {
 		return "", err
 	}
@@ -133,7 +138,7 @@ func CapturePane(sessionName string) (string, error) {
 
 // GetSessionCwd returns the working directory where a session was launched
 func GetSessionCwd(sessionName string) string {
-	out, err := cmd("show-options", "-t", sessionName, "-v", "@pb_cwd").Output()
+	out, err := cmd("show-options", "-t", exactTarget(sessionName), "-v", "@pb_cwd").Output()
 	if err != nil {
 		return ""
 	}
@@ -142,7 +147,7 @@ func GetSessionCwd(sessionName string) string {
 
 // GetSessionCommand returns the configured command binding for a session.
 func GetSessionCommand(sessionName string) string {
-	out, err := cmd("show-options", "-t", sessionName, "-v", "@pb_command").Output()
+	out, err := cmd("show-options", "-t", exactTarget(sessionName), "-v", "@pb_command").Output()
 	if err != nil {
 		return ""
 	}
@@ -151,12 +156,12 @@ func GetSessionCommand(sessionName string) string {
 
 // SetSessionTool persists the logical built-in tool for a session.
 func SetSessionTool(sessionName, tool string) error {
-	return cmd("set-option", "-t", sessionName, "@pb_tool", tool).Run()
+	return cmd("set-option", "-t", exactTarget(sessionName), "@pb_tool", tool).Run()
 }
 
 // GetSessionTool returns the logical built-in tool for a session.
 func GetSessionTool(sessionName string) string {
-	out, err := cmd("show-options", "-t", sessionName, "-v", "@pb_tool").Output()
+	out, err := cmd("show-options", "-t", exactTarget(sessionName), "-v", "@pb_tool").Output()
 	if err != nil {
 		return ""
 	}
@@ -169,12 +174,12 @@ func SetSessionYolo(sessionName string, enabled bool) error {
 	if enabled {
 		val = "1"
 	}
-	return cmd("set-option", "-t", sessionName, "@pb_yolo", val).Run()
+	return cmd("set-option", "-t", exactTarget(sessionName), "@pb_yolo", val).Run()
 }
 
 // GetSessionYolo reports whether a session was launched in yolo mode.
 func GetSessionYolo(sessionName string) bool {
-	out, err := cmd("show-options", "-t", sessionName, "-v", "@pb_yolo").Output()
+	out, err := cmd("show-options", "-t", exactTarget(sessionName), "-v", "@pb_yolo").Output()
 	if err != nil {
 		return false
 	}
@@ -250,7 +255,7 @@ func (s *Session) Attach() error {
 // capturePane captures the current pane content (last 10 lines only for efficiency)
 func (s *Session) capturePane() (string, error) {
 	// Only capture last 10 lines to reduce overhead
-	out, err := cmd("capture-pane", "-t", s.name, "-p", "-S", "-10").Output()
+	out, err := cmd("capture-pane", "-t", exactTarget(s.name), "-p", "-S", "-10").Output()
 	if err != nil {
 		return "", err
 	}
