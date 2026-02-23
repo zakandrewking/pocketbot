@@ -52,7 +52,7 @@ func SessionUserTasks(sessionName string) ([]Task, error) {
 }
 
 func panePIDs(sessionName string) ([]int, error) {
-	out, err := cmd("list-panes", "-t", exactTarget(sessionName), "-F", "#{pane_pid}").Output()
+	out, err := cmd("list-panes", "-t", sessionTarget(sessionName), "-F", "#{pane_pid}").Output()
 	if err != nil {
 		return nil, err
 	}
