@@ -312,6 +312,34 @@ func TestKEntersKillMode(t *testing.T) {
 	}
 }
 
+func TestREntersRenameMode(t *testing.T) {
+	cfg := config.DefaultConfig()
+	m := model{
+		config:      cfg,
+		sessions:    map[string]*tmux.Session{"codex": tmux.NewSession("codex", cfg.Codex.Command)},
+		bindings:    map[string]commandBinding{},
+		windowWidth: 80,
+		viewState:   viewHome,
+		mode:        modeHome,
+	}
+	if err := m.sessions["codex"].Start(); err != nil {
+		t.Skipf("tmux sessions cannot be started in this environment: %v", err)
+	}
+	defer m.sessions["codex"].Stop()
+
+	updatedModel, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("r")})
+	m, ok := updatedModel.(model)
+	if !ok {
+		t.Fatal("Update should return a model")
+	}
+	if cmd != nil {
+		t.Fatal("r should not quit")
+	}
+	if m.mode != modeRenameTool {
+		t.Fatal("r should enter rename-tool mode")
+	}
+}
+
 func TestEscCancelsPickerMode(t *testing.T) {
 	m := model{
 		config:      config.DefaultConfig(),
@@ -660,8 +688,8 @@ func TestKillModeShowsSecondKeyHintsForMultipleToolSessions(t *testing.T) {
 	defer m.sessions["codex-2"].Stop()
 
 	view := m.View()
-	if !contains(view, "(x a) codex repo:") || !contains(view, "(x b) codex repo:") {
-		t.Fatalf("expected second-key hints for multiple codex sessions, got: %s", view)
+	if !contains(view, "(x a) codex repo:") || !contains(view, "(x b) codex-2 repo:") {
+		t.Fatalf("expected session names in second-key hints for multiple codex sessions, got: %s", view)
 	}
 }
 
@@ -704,6 +732,156 @@ func TestKillModeXStillOpensPickerWhenMultipleCodexSessions(t *testing.T) {
 	}
 	if len(m.pickerTargets) != 2 {
 		t.Fatalf("expected 2 picker targets, got %d", len(m.pickerTargets))
+	}
+}
+
+func TestRenameModeXStillOpensPickerWhenMultipleCodexSessions(t *testing.T) {
+	cfg := config.DefaultConfig()
+	m := model{
+		config: cfg,
+		sessions: map[string]*tmux.Session{
+			"codex":   tmux.NewSession("codex", cfg.Codex.Command),
+			"codex-2": tmux.NewSession("codex-2", cfg.Codex.Command),
+		},
+		bindings:    map[string]commandBinding{},
+		windowWidth: 80,
+		viewState:   viewHome,
+		mode:        modeRenameTool,
+	}
+	if err := m.sessions["codex"].Start(); err != nil {
+		t.Skipf("tmux sessions cannot be started in this environment: %v", err)
+	}
+	if err := m.sessions["codex-2"].Start(); err != nil {
+		_ = m.sessions["codex"].Stop()
+		t.Skipf("tmux sessions cannot be started in this environment: %v", err)
+	}
+	defer m.sessions["codex"].Stop()
+	defer m.sessions["codex-2"].Stop()
+
+	updatedModel, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("x")})
+	m, ok := updatedModel.(model)
+	if !ok {
+		t.Fatal("Update should return a model")
+	}
+	if cmd != nil {
+		t.Fatal("x in rename mode should not quit")
+	}
+	if m.mode != modePickRename {
+		t.Fatalf("expected modePickRename, got %v", m.mode)
+	}
+	if len(m.pickerTargets) != 2 {
+		t.Fatalf("expected 2 picker targets, got %d", len(m.pickerTargets))
+	}
+}
+
+func TestRenameModeShowsSessionNamesForMultipleToolSessions(t *testing.T) {
+	cfg := config.DefaultConfig()
+	m := model{
+		config: cfg,
+		sessions: map[string]*tmux.Session{
+			"codex":   tmux.NewSession("codex", cfg.Codex.Command),
+			"codex-2": tmux.NewSession("codex-2", cfg.Codex.Command),
+		},
+		bindings:    map[string]commandBinding{},
+		windowWidth: 80,
+		viewState:   viewHome,
+		mode:        modeRenameTool,
+	}
+	if err := m.sessions["codex"].Start(); err != nil {
+		t.Skipf("tmux sessions cannot be started in this environment: %v", err)
+	}
+	if err := m.sessions["codex-2"].Start(); err != nil {
+		_ = m.sessions["codex"].Stop()
+		t.Skipf("tmux sessions cannot be started in this environment: %v", err)
+	}
+	defer m.sessions["codex"].Stop()
+	defer m.sessions["codex-2"].Stop()
+
+	view := m.View()
+	if !contains(view, "(x a) codex repo:") || !contains(view, "(x b) codex-2 repo:") {
+		t.Fatalf("expected session names in rename mode hints, got: %s", view)
+	}
+}
+
+func TestApplyRenameTargetRenamesSessionInModel(t *testing.T) {
+	cfg := config.DefaultConfig()
+	m := model{
+		config:       cfg,
+		sessions:     map[string]*tmux.Session{"codex": tmux.NewSession("codex", cfg.Codex.Command)},
+		bindings:     map[string]commandBinding{},
+		mode:         modeRenameInput,
+		renameTarget: "codex",
+		renameInput:  "focus",
+	}
+
+	originalRename := renameSessionFn
+	defer func() { renameSessionFn = originalRename }()
+	renameSessionFn = func(oldName, newName string) error { return nil }
+
+	updatedModel, _ := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m = updatedModel.(model)
+	if m.mode != modeHome {
+		t.Fatalf("expected modeHome after rename, got %v", m.mode)
+	}
+	if _, ok := m.sessions["focus"]; !ok {
+		t.Fatal("expected renamed session key to exist")
+	}
+	if _, ok := m.sessions["codex"]; ok {
+		t.Fatal("expected old session key removed")
+	}
+	if !contains(m.homeNotice, "renamed codex to focus") {
+		t.Fatalf("expected rename notice, got %q", m.homeNotice)
+	}
+}
+
+func TestValidSessionNameAllowsSpaces(t *testing.T) {
+	if !validSessionName("my focus run") {
+		t.Fatal("expected spaces to be allowed in session names")
+	}
+}
+
+func TestRenameInputShowsCursorIndicator(t *testing.T) {
+	m := model{
+		config:       config.DefaultConfig(),
+		sessions:     map[string]*tmux.Session{},
+		bindings:     map[string]commandBinding{},
+		viewState:    viewHome,
+		mode:         modeRenameInput,
+		renameTarget: "codex",
+		renameInput:  "my session",
+	}
+	view := m.View()
+	if !contains(view, "▌") {
+		t.Fatalf("expected cursor indicator in rename input, got: %s", view)
+	}
+}
+
+func TestRenameUpdatesHomeRowWithNewName(t *testing.T) {
+	requireTmuxSessionCreation(t)
+
+	sessionName := fmt.Sprintf("codex-rename-%d", time.Now().UnixNano())
+	newName := "focus run"
+	if err := tmux.CreateSession(sessionName, "sleep 60"); err != nil {
+		t.Skipf("tmux session unavailable in this environment: %v", err)
+	}
+	defer tmux.KillSession(newName)
+	defer tmux.KillSession(sessionName)
+
+	cfg := config.DefaultConfig()
+	m := model{
+		config:   cfg,
+		sessions: map[string]*tmux.Session{sessionName: tmux.NewSession(sessionName, cfg.Codex.Command)},
+		bindings: map[string]commandBinding{},
+		mode:     modeRenameInput,
+		viewState: viewHome,
+		renameTarget: sessionName,
+		renameInput:  newName,
+	}
+
+	m = m.applyRenameTarget()
+	view := m.View()
+	if !contains(view, newName) {
+		t.Fatalf("expected renamed session in home view, got: %s", view)
 	}
 }
 

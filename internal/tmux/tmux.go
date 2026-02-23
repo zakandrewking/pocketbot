@@ -112,6 +112,11 @@ func KillSession(name string) error {
 	return cmd("kill-session", "-t", name).Run()
 }
 
+// RenameSession renames a tmux session.
+func RenameSession(oldName, newName string) error {
+	return cmd("rename-session", "-t", oldName, newName).Run()
+}
+
 // KillServer kills the entire pocketbot tmux server
 func KillServer() error {
 	return cmd("kill-server").Run()
@@ -138,6 +143,20 @@ func GetSessionCwd(sessionName string) string {
 // GetSessionCommand returns the configured command binding for a session.
 func GetSessionCommand(sessionName string) string {
 	out, err := cmd("show-options", "-t", sessionName, "-v", "@pb_command").Output()
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(out))
+}
+
+// SetSessionTool persists the logical built-in tool for a session.
+func SetSessionTool(sessionName, tool string) error {
+	return cmd("set-option", "-t", sessionName, "@pb_tool", tool).Run()
+}
+
+// GetSessionTool returns the logical built-in tool for a session.
+func GetSessionTool(sessionName string) string {
+	out, err := cmd("show-options", "-t", sessionName, "-v", "@pb_tool").Output()
 	if err != nil {
 		return ""
 	}

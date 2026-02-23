@@ -20,6 +20,7 @@ import (
 var (
 	listSessionsFn     = tmux.ListSessions
 	sessionUserTasksFn = tmux.SessionUserTasks
+	renameSessionFn    = tmux.RenameSession
 	killTaskPIDFn      = func(pid int) error {
 		return syscall.Kill(pid, syscall.SIGTERM)
 	}
@@ -40,9 +41,12 @@ const (
 	modeHome uiMode = iota
 	modeNewTool
 	modeKillTool
+	modeRenameTool
 	modePickAttach
 	modePickKill
+	modePickRename
 	modePickKillTask
+	modeRenameInput
 	modeDirJump
 )
 
@@ -58,6 +62,7 @@ type commandBinding struct {
 	Cwd         string
 	Running     bool
 	Yolo        bool
+	Tool        string
 	LastSeen    time.Time
 }
 
@@ -81,6 +86,8 @@ type model struct {
 	mode            uiMode
 	pickerTool      string
 	pickerTargets   map[string]string
+	renameTarget    string
+	renameInput     string
 	shouldAttach    bool
 	sessionToAttach string // Name of session to attach to
 	homeNotice      string
@@ -167,6 +174,7 @@ func (m *model) refreshBindings() {
 			Cwd:         tmux.GetSessionCwd(name),
 			Running:     true,
 			Yolo:        tmux.GetSessionYolo(name),
+			Tool:        m.sessionTool(name),
 			LastSeen:    time.Now(),
 		}
 		live[name] = true
@@ -177,6 +185,13 @@ func (m *model) refreshBindings() {
 			delete(m.bindings, sessionName)
 		}
 	}
+}
+
+func (m model) sessionTool(name string) string {
+	if tool := tmux.GetSessionTool(name); tool != "" {
+		return tool
+	}
+	return toolFromSessionName(name)
 }
 
 func checkDirectoryMismatch() {
@@ -239,7 +254,7 @@ func pickerKey(i int) string {
 func (m model) runningToolSessions(tool string) []string {
 	var out []string
 	for name, sess := range m.sessions {
-		if toolFromSessionName(name) != tool {
+		if m.sessionTool(name) != tool {
 			continue
 		}
 		if sess != nil && sess.IsRunning() {
@@ -253,7 +268,11 @@ func (m model) runningToolSessions(tool string) []string {
 func (m model) toolSessionsInDir(tool, cwd string) []string {
 	var out []string
 	for name, binding := range m.bindings {
-		if toolFromSessionName(name) != tool {
+		bindingTool := binding.Tool
+		if bindingTool == "" {
+			bindingTool = m.sessionTool(name)
+		}
+		if bindingTool != tool {
 			continue
 		}
 		if !binding.Running || binding.Cwd != cwd {
@@ -591,6 +610,7 @@ func (m model) createAndAttachTool(tool string) (model, tea.Cmd) {
 		m.homeNotice = fmt.Sprintf("failed to create %s: %v", tool, err)
 		return m, nil
 	}
+	_ = tmux.SetSessionTool(name, tool)
 	if err := tmux.SetSessionYolo(name, yoloEnabled); err != nil {
 		// Non-fatal: session still starts even if metadata cannot be persisted.
 	}
@@ -650,6 +670,78 @@ func (m model) handleToolKill(tool string) (model, tea.Cmd) {
 		m = m.preparePicker(tool, modePickKill)
 		return m, nil
 	}
+}
+
+func validSessionName(name string) bool {
+	if name == "" {
+		return false
+	}
+	for _, r := range name {
+		if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') {
+			continue
+		}
+		switch r {
+		case '-', '_', '.', ' ':
+			continue
+		default:
+			return false
+		}
+	}
+	return true
+}
+
+func (m model) beginRenameTarget(name string) model {
+	m.mode = modeRenameInput
+	m.renameTarget = name
+	m.renameInput = name
+	m.homeNotice = ""
+	return m
+}
+
+func (m model) applyRenameTarget() model {
+	oldName := strings.TrimSpace(m.renameTarget)
+	newName := strings.TrimSpace(m.renameInput)
+	if oldName == "" {
+		m.mode = modeHome
+		m.homeNotice = "no rename target selected"
+		return m
+	}
+	if newName == "" {
+		m.homeNotice = "name cannot be empty"
+		return m
+	}
+	if newName == oldName {
+		m.mode = modeHome
+		m.homeNotice = "name unchanged"
+		return m
+	}
+	if !validSessionName(newName) {
+		m.homeNotice = "name can only use letters, numbers, ., _, -"
+		return m
+	}
+	if _, exists := m.sessions[newName]; exists {
+		m.homeNotice = fmt.Sprintf("session %s already exists", newName)
+		return m
+	}
+	if err := renameSessionFn(oldName, newName); err != nil {
+		m.homeNotice = fmt.Sprintf("failed to rename %s: %v", oldName, err)
+		return m
+	}
+	tool := m.sessionTool(oldName)
+
+	if _, ok := m.sessions[oldName]; ok {
+		delete(m.sessions, oldName)
+	}
+	command := m.commandForTool(tool)
+	m.sessions[newName] = tmux.NewSession(newName, command)
+	_ = tmux.SetSessionTool(newName, tool)
+	delete(m.bindings, oldName)
+	m.renameTarget = ""
+	m.renameInput = ""
+	m.mode = modeHome
+	m.refreshBindings()
+	m.homeNotice = fmt.Sprintf("renamed %s to %s", oldName, newName)
+	return m
 }
 
 func (m model) Init() tea.Cmd {
@@ -792,10 +884,12 @@ func (m model) updateHome(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			// Quit without killing sessions
 			return m, tea.Quit
 		}
-		if m.mode == modeNewTool || m.mode == modeKillTool {
+		if m.mode == modeNewTool || m.mode == modeKillTool || m.mode == modeRenameTool || m.mode == modeRenameInput {
 			m.mode = modeHome
 			m.homeNotice = ""
 			m.newToolYolo = false
+			m.renameTarget = ""
+			m.renameInput = ""
 			return m, nil
 		}
 	case "esc":
@@ -803,11 +897,29 @@ func (m model) updateHome(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.mode = modeHome
 			m.homeNotice = ""
 			m.newToolYolo = false
+			m.renameTarget = ""
+			m.renameInput = ""
 			return m, nil
 		}
 	}
 
 	switch m.mode {
+	case modeRenameInput:
+		switch msg.Type {
+		case tea.KeyEnter:
+			m = m.applyRenameTarget()
+			return m, nil
+		case tea.KeyBackspace, tea.KeyDelete:
+			if len(m.renameInput) > 0 {
+				m.renameInput = m.renameInput[:len(m.renameInput)-1]
+			}
+			return m, nil
+		case tea.KeyRunes:
+			m.renameInput += string(msg.Runes)
+			return m, nil
+		default:
+			return m, nil
+		}
 	case modeDirJump:
 		switch msg.Type {
 		case tea.KeyEsc:
@@ -920,6 +1032,40 @@ func (m model) updateHome(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			}
 			return m.handleToolKill(tool)
 		}
+	case modeRenameTool:
+		tools := []string{"claude", "codex", "cursor"}
+		targetsByTool := make(map[string][]string, len(tools))
+		runningAny := false
+		for _, tool := range tools {
+			targetsByTool[tool] = m.runningToolSessions(tool)
+			if len(targetsByTool[tool]) > 0 {
+				runningAny = true
+			}
+		}
+		if !runningAny {
+			m.mode = modeHome
+			m.homeNotice = "no rename targets are running"
+			return m, nil
+		}
+		tool := m.toolForKey(key)
+		if tool == "" {
+			if m.disabledToolKey(key) {
+				return m, nil
+			}
+			m.homeNotice = fmt.Sprintf("Unknown rename target %q.", key)
+			return m, nil
+		}
+		targets := targetsByTool[tool]
+		if len(targets) == 0 {
+			m.homeNotice = fmt.Sprintf("%s is not running", tool)
+			return m, nil
+		}
+		if len(targets) > 1 {
+			m = m.preparePicker(tool, modePickRename)
+			return m, nil
+		}
+		m = m.beginRenameTarget(targets[0])
+		return m, nil
 	case modePickAttach:
 		target, ok := m.pickerTargets[key]
 		if !ok {
@@ -940,6 +1086,14 @@ func (m model) updateHome(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		m.mode = modeHome
 		m.refreshBindings()
+		return m, nil
+	case modePickRename:
+		target, ok := m.pickerTargets[key]
+		if !ok {
+			m.homeNotice = fmt.Sprintf("Unknown target %q.", key)
+			return m, nil
+		}
+		m = m.beginRenameTarget(target)
 		return m, nil
 	case modePickKillTask:
 		target, ok := m.taskKillTargets[key]
@@ -980,6 +1134,14 @@ func (m model) updateHome(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		m.mode = modeKillTool
+		m.homeNotice = ""
+		return m, nil
+	case "r":
+		if !m.hasAnyRunningSessions() {
+			m.homeNotice = "no running sessions to rename"
+			return m, nil
+		}
+		m.mode = modeRenameTool
 		m.homeNotice = ""
 		return m, nil
 	}
@@ -1151,7 +1313,7 @@ func (m model) viewHome() string {
 				return
 			}
 			if len(names) == 1 {
-				lines = append(lines, fmt.Sprintf("%s kill %s", keyStyle.Render(key), tool))
+				lines = append(lines, fmt.Sprintf("%s kill %s", keyStyle.Render(key), names[0]))
 				return
 			}
 			for i, name := range names {
@@ -1163,7 +1325,7 @@ func (m model) viewHome() string {
 				if binding, ok := m.bindings[name]; ok {
 					repo = repoFromCwd(binding.Cwd)
 				}
-				lines = append(lines, fmt.Sprintf("%s %s repo:%s", keyStyle.Render("("+key+" "+letter+")"), tool, repoNameStyle.Render(repo)))
+				lines = append(lines, fmt.Sprintf("%s %s repo:%s", keyStyle.Render("("+key+" "+letter+")"), name, repoNameStyle.Render(repo)))
 			}
 		}
 		if runningClaude && m.toolEnabled("claude") {
@@ -1176,6 +1338,41 @@ func (m model) viewHome() string {
 			renderKillRows("cursor", m.keyForTool("cursor"))
 		}
 		lines = append(lines, fmt.Sprintf("%s kill task", keyStyle.Render("t")))
+		lines = append(lines, "esc cancel")
+	case modeRenameTool:
+		runningClaude := len(m.runningToolSessions("claude")) > 0
+		runningCodex := len(m.runningToolSessions("codex")) > 0
+		runningCursor := len(m.runningToolSessions("cursor")) > 0
+		renderRenameRows := func(tool, key string) {
+			names := m.runningToolSessions(tool)
+			if len(names) == 0 {
+				return
+			}
+			if len(names) == 1 {
+				lines = append(lines, fmt.Sprintf("%s rename %s", keyStyle.Render(key), names[0]))
+				return
+			}
+			for i, name := range names {
+				letter := alphaKey(i)
+				if letter == "" {
+					break
+				}
+				repo := "-"
+				if binding, ok := m.bindings[name]; ok {
+					repo = repoFromCwd(binding.Cwd)
+				}
+				lines = append(lines, fmt.Sprintf("%s %s repo:%s", keyStyle.Render("("+key+" "+letter+")"), name, repoNameStyle.Render(repo)))
+			}
+		}
+		if runningClaude && m.toolEnabled("claude") {
+			renderRenameRows("claude", m.keyForTool("claude"))
+		}
+		if runningCodex && m.toolEnabled("codex") {
+			renderRenameRows("codex", m.keyForTool("codex"))
+		}
+		if runningCursor && m.toolEnabled("cursor") {
+			renderRenameRows("cursor", m.keyForTool("cursor"))
+		}
 		lines = append(lines, "esc cancel")
 	case modePickAttach, modePickKill:
 		action := "attach"
@@ -1214,6 +1411,27 @@ func (m model) viewHome() string {
 			lines = append(lines, strings.Join(rowParts, " "))
 		}
 		lines = append(lines, "esc cancel")
+	case modePickRename:
+		lines = append(lines, metaStyle.Render("rename "+m.pickerTool))
+		keys := make([]string, 0, len(m.pickerTargets))
+		for k := range m.pickerTargets {
+			keys = append(keys, k)
+		}
+		sort.Strings(keys)
+		lines = append(lines, alertStyle.Render("pick one key"))
+		for _, k := range keys {
+			name := m.pickerTargets[k]
+			repo := "-"
+			if binding, ok := m.bindings[name]; ok {
+				repo = repoFromCwd(binding.Cwd)
+			}
+			lines = append(lines, fmt.Sprintf("%s %s %s",
+				keyStyle.Render("("+k+")"),
+				name,
+				repoNameStyle.Render(repo),
+			))
+		}
+		lines = append(lines, "esc cancel")
 	case modePickKillTask:
 		lines = append(lines, metaStyle.Render("kill task"))
 		keys := make([]string, 0, len(m.taskKillTargets))
@@ -1232,6 +1450,11 @@ func (m model) viewHome() string {
 			))
 		}
 		lines = append(lines, "esc cancel")
+	case modeRenameInput:
+		lines = append(lines, metaStyle.Render(fmt.Sprintf("rename %s", m.renameTarget)))
+		cursorStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#4DA3FF")).Bold(true)
+		lines = append(lines, fmt.Sprintf("new name: %s%s", m.renameInput, cursorStyle.Render("▌")))
+		lines = append(lines, "enter confirm   esc cancel")
 	default:
 		claude := m.runningToolSessions("claude")
 		codex := m.runningToolSessions("codex")
@@ -1249,7 +1472,7 @@ func (m model) viewHome() string {
 		}
 		lines = append(lines,
 			fmt.Sprintf("%s jump-dir   %s new   %s kill", keyStyle.Render("z"), keyStyle.Render("n"), keyStyle.Render("k")),
-			fmt.Sprintf("%s %s", keyStyle.Render("t"), map[bool]string{true: "hide tasks", false: "show tasks"}[m.showTaskDetails]),
+			fmt.Sprintf("%s %s   %s rename", keyStyle.Render("t"), map[bool]string{true: "hide tasks", false: "show tasks"}[m.showTaskDetails], keyStyle.Render("r")),
 		)
 		if m.hasAnyRunningSessions() {
 			lines = append(lines, fmt.Sprintf("%s quit   %s kill-all", keyStyle.Render("d"), keyStyle.Render("^c")))
@@ -1592,6 +1815,7 @@ Interactive mode keybindings:
   z               Jump directory with fasder query
   n               New instance (then y to toggle yolo, then c/x/u)
   k               Kill one instance (then c/x/u and picker if needed)
+  r               Rename one instance (same flow as k)
   t               Toggle per-session task lines on home screen
   Esc             Go back/cancel in menus
   Ctrl+D          Detach from session (back to pb)
