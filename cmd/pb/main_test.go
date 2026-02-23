@@ -809,6 +809,7 @@ func TestApplyRenameTargetRenamesSessionInModel(t *testing.T) {
 	m := model{
 		config:       cfg,
 		sessions:     map[string]*tmux.Session{"codex": tmux.NewSession("codex", cfg.Codex.Command)},
+		sessionTools: map[string]string{"codex": "codex"},
 		bindings:     map[string]commandBinding{},
 		mode:         modeRenameInput,
 		renameTarget: "codex",
@@ -816,8 +817,21 @@ func TestApplyRenameTargetRenamesSessionInModel(t *testing.T) {
 	}
 
 	originalRename := renameSessionFn
+	originalSetTool := setSessionToolFn
+	originalListSessions := listSessionsFn
 	defer func() { renameSessionFn = originalRename }()
+	defer func() { setSessionToolFn = originalSetTool }()
+	defer func() { listSessionsFn = originalListSessions }()
 	renameSessionFn = func(oldName, newName string) error { return nil }
+	setSessionToolFn = func(sessionName, tool string) error { return nil }
+	listCalls := 0
+	listSessionsFn = func() []string {
+		listCalls++
+		if listCalls == 1 {
+			return []string{"codex"}
+		}
+		return []string{"focus"}
+	}
 
 	updatedModel, _ := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
 	m = updatedModel.(model)
@@ -827,11 +841,72 @@ func TestApplyRenameTargetRenamesSessionInModel(t *testing.T) {
 	if _, ok := m.sessions["focus"]; !ok {
 		t.Fatal("expected renamed session key to exist")
 	}
-	if _, ok := m.sessions["codex"]; ok {
-		t.Fatal("expected old session key removed")
+	if got := m.sessionTools["focus"]; got != "codex" {
+		t.Fatalf("expected renamed session tool mapping to persist, got %q", got)
 	}
 	if !contains(m.homeNotice, "renamed codex to focus") {
 		t.Fatalf("expected rename notice, got %q", m.homeNotice)
+	}
+}
+
+func TestRunningToolSessionsIncludesRenamedSessionViaStoredToolMapping(t *testing.T) {
+	m := model{
+		config: config.DefaultConfig(),
+		sessions: map[string]*tmux.Session{
+			"focus run": tmux.NewSession("focus run", ""),
+		},
+		sessionTools: map[string]string{
+			"focus run": "claude",
+		},
+		bindings: map[string]commandBinding{
+			"focus run": {SessionName: "focus run", Running: true},
+		},
+	}
+
+	got := m.runningToolSessions("claude")
+	if len(got) != 1 || got[0] != "focus run" {
+		t.Fatalf("expected renamed claude session to be listed, got %v", got)
+	}
+}
+
+func TestSyncSessionsWithTmuxKeepsConfiguredAndPrunesStale(t *testing.T) {
+	cfg := config.DefaultConfig()
+	m := model{
+		config: cfg,
+		sessions: map[string]*tmux.Session{
+			"ghost": tmux.NewSession("ghost", ""),
+		},
+		sessionTools: map[string]string{
+			"ghost": "claude",
+		},
+	}
+
+	originalList := listSessionsFn
+	originalGetTool := getSessionToolFn
+	defer func() {
+		listSessionsFn = originalList
+		getSessionToolFn = originalGetTool
+	}()
+	listSessionsFn = func() []string { return []string{"focus run"} }
+	getSessionToolFn = func(sessionName string) string {
+		if sessionName == "focus run" {
+			return "codex"
+		}
+		return ""
+	}
+
+	m.syncSessionsWithTmux()
+	if _, ok := m.sessions["ghost"]; ok {
+		t.Fatal("expected stale non-configured session to be pruned")
+	}
+	if _, ok := m.sessions["focus run"]; !ok {
+		t.Fatal("expected live tmux session to be added")
+	}
+	if got := m.sessionTools["focus run"]; got != "codex" {
+		t.Fatalf("expected tool mapping for live session, got %q", got)
+	}
+	if _, ok := m.sessions["claude"]; !ok {
+		t.Fatal("expected configured base session wrapper to be retained")
 	}
 }
 

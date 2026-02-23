@@ -21,6 +21,8 @@ var (
 	listSessionsFn     = tmux.ListSessions
 	sessionUserTasksFn = tmux.SessionUserTasks
 	renameSessionFn    = tmux.RenameSession
+	getSessionToolFn   = tmux.GetSessionTool
+	setSessionToolFn   = tmux.SetSessionTool
 	killTaskPIDFn      = func(pid int) error {
 		return syscall.Kill(pid, syscall.SIGTERM)
 	}
@@ -75,6 +77,7 @@ type taskKillTarget struct {
 type model struct {
 	config          *config.Config
 	sessions        map[string]*tmux.Session
+	sessionTools    map[string]string
 	bindings        map[string]commandBinding
 	taskCounts      map[string]int
 	taskCommands    map[string][]string
@@ -131,6 +134,7 @@ func initialModel() model {
 	return model{
 		config:          cfg,
 		sessions:        sessions,
+		sessionTools:    make(map[string]string),
 		bindings:        make(map[string]commandBinding),
 		taskCounts:      make(map[string]int),
 		taskCommands:    make(map[string][]string),
@@ -143,6 +147,91 @@ func initialModel() model {
 		chdir:           os.Chdir,
 		lookupDirs:      lookupDirectoriesWithFasder,
 		hasFasder:       fasderAvailable(),
+	}
+}
+
+func normalizeToolName(tool string) string {
+	switch tool {
+	case "claude", "codex", "cursor":
+		return tool
+	default:
+		return ""
+	}
+}
+
+func (m *model) rememberSessionTool(name, tool string) {
+	tool = normalizeToolName(tool)
+	if tool == "" {
+		return
+	}
+	if m.sessionTools == nil {
+		m.sessionTools = make(map[string]string)
+	}
+	m.sessionTools[name] = tool
+}
+
+func (m *model) configuredSessionNameSet() map[string]bool {
+	names := make(map[string]bool)
+	if m.config == nil {
+		return names
+	}
+	for _, sess := range m.config.AllSessions() {
+		names[sess.Name] = true
+	}
+	return names
+}
+
+func (m *model) syncSessionsWithTmux() {
+	if m.sessions == nil {
+		m.sessions = make(map[string]*tmux.Session)
+	}
+	if m.sessionTools == nil {
+		m.sessionTools = make(map[string]string)
+	}
+
+	configured := m.configuredSessionNameSet()
+	if m.config != nil {
+		for _, sess := range m.config.AllSessions() {
+			if _, exists := m.sessions[sess.Name]; !exists {
+				m.sessions[sess.Name] = tmux.NewSession(sess.Name, sess.Command)
+			}
+			if inferred := toolFromSessionName(sess.Name); inferred != "" {
+				m.rememberSessionTool(sess.Name, inferred)
+			}
+		}
+	}
+	live := make(map[string]bool)
+	for _, name := range listSessionsFn() {
+		if strings.TrimSpace(name) == "" {
+			continue
+		}
+		live[name] = true
+		if _, exists := m.sessions[name]; !exists {
+			command := ""
+			tool := m.sessionTool(name)
+			if tool != "" {
+				command = m.commandForTool(tool)
+			}
+			m.sessions[name] = tmux.NewSession(name, command)
+		}
+		if tool := normalizeToolName(getSessionToolFn(name)); tool != "" {
+			m.sessionTools[name] = tool
+			continue
+		}
+		if _, ok := m.sessionTools[name]; ok {
+			continue
+		}
+		if inferred := toolFromSessionName(name); inferred != "" {
+			m.sessionTools[name] = inferred
+		}
+	}
+
+	for name := range m.sessions {
+		if live[name] || configured[name] {
+			continue
+		}
+		delete(m.sessions, name)
+		delete(m.sessionTools, name)
 	}
 }
 
@@ -159,6 +248,7 @@ func (m *model) currentDir() string {
 }
 
 func (m *model) refreshBindings() {
+	m.syncSessionsWithTmux()
 	if m.bindings == nil {
 		m.bindings = make(map[string]commandBinding)
 	}
@@ -188,7 +278,10 @@ func (m *model) refreshBindings() {
 }
 
 func (m model) sessionTool(name string) string {
-	if tool := tmux.GetSessionTool(name); tool != "" {
+	if tool := normalizeToolName(m.sessionTools[name]); tool != "" {
+		return tool
+	}
+	if tool := normalizeToolName(getSessionToolFn(name)); tool != "" {
 		return tool
 	}
 	return toolFromSessionName(name)
@@ -253,13 +346,15 @@ func pickerKey(i int) string {
 
 func (m model) runningToolSessions(tool string) []string {
 	var out []string
-	for name, sess := range m.sessions {
-		if m.sessionTool(name) != tool {
+	for name, binding := range m.bindings {
+		bindingTool := binding.Tool
+		if bindingTool == "" {
+			bindingTool = m.sessionTool(name)
+		}
+		if bindingTool != tool || !binding.Running {
 			continue
 		}
-		if sess != nil && sess.IsRunning() {
-			out = append(out, name)
-		}
+		out = append(out, name)
 	}
 	sort.Strings(out)
 	return out
@@ -610,7 +705,8 @@ func (m model) createAndAttachTool(tool string) (model, tea.Cmd) {
 		m.homeNotice = fmt.Sprintf("failed to create %s: %v", tool, err)
 		return m, nil
 	}
-	_ = tmux.SetSessionTool(name, tool)
+	_ = setSessionToolFn(name, tool)
+	m.rememberSessionTool(name, tool)
 	if err := tmux.SetSessionYolo(name, yoloEnabled); err != nil {
 		// Non-fatal: session still starts even if metadata cannot be persisted.
 	}
@@ -662,6 +758,8 @@ func (m model) handleToolKill(tool string) (model, tea.Cmd) {
 			m.homeNotice = fmt.Sprintf("failed to stop %s: %v", targets[0], err)
 		} else {
 			m.homeNotice = fmt.Sprintf("stopped %s", targets[0])
+			delete(m.sessions, targets[0])
+			delete(m.sessionTools, targets[0])
 		}
 		m.refreshBindings()
 		m.mode = modeHome
@@ -723,6 +821,10 @@ func (m model) applyRenameTarget() model {
 		m.homeNotice = fmt.Sprintf("session %s already exists", newName)
 		return m
 	}
+	if tmux.SessionExists(newName) {
+		m.homeNotice = fmt.Sprintf("session %s already exists", newName)
+		return m
+	}
 	if err := renameSessionFn(oldName, newName); err != nil {
 		m.homeNotice = fmt.Sprintf("failed to rename %s: %v", oldName, err)
 		return m
@@ -732,9 +834,11 @@ func (m model) applyRenameTarget() model {
 	if _, ok := m.sessions[oldName]; ok {
 		delete(m.sessions, oldName)
 	}
+	delete(m.sessionTools, oldName)
 	command := m.commandForTool(tool)
 	m.sessions[newName] = tmux.NewSession(newName, command)
-	_ = tmux.SetSessionTool(newName, tool)
+	_ = setSessionToolFn(newName, tool)
+	m.rememberSessionTool(newName, tool)
 	delete(m.bindings, oldName)
 	m.renameTarget = ""
 	m.renameInput = ""
@@ -797,8 +901,8 @@ func summarizeTaskCommands(tasks []tmux.Task, max int) []string {
 
 func (m model) runningSessionNames() []string {
 	var names []string
-	for name, sess := range m.sessions {
-		if sess == nil || !sess.IsRunning() {
+	for name, binding := range m.bindings {
+		if !binding.Running {
 			continue
 		}
 		names = append(names, name)
@@ -1083,6 +1187,8 @@ func (m model) updateHome(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.homeNotice = fmt.Sprintf("failed to stop %s: %v", target, err)
 		} else {
 			m.homeNotice = fmt.Sprintf("stopped %s", target)
+			delete(m.sessions, target)
+			delete(m.sessionTools, target)
 		}
 		m.mode = modeHome
 		m.refreshBindings()
@@ -1183,6 +1289,8 @@ func (m model) stopSession(name string) model {
 		return m
 	}
 
+	delete(m.sessions, name)
+	delete(m.sessionTools, name)
 	m.refreshBindings()
 	m.homeNotice = fmt.Sprintf("stopped %s session", name)
 	return m
