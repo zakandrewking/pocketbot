@@ -961,6 +961,69 @@ func TestRenameUpdatesHomeRowWithNewName(t *testing.T) {
 	}
 }
 
+func TestIntegrationCreateThenRenameClaudeDoesNotDuplicateInHomeView(t *testing.T) {
+	requireTmuxSessionCreation(t)
+
+	// Isolate tmux state so this test is not affected by existing user sessions.
+	socketLevel := fmt.Sprintf("itest-%d", time.Now().UnixNano())
+	t.Setenv("PB_LEVEL", socketLevel)
+	defer tmux.KillServer()
+
+	cfg := config.DefaultConfig()
+	m := model{
+		config:        cfg,
+		sessions:      map[string]*tmux.Session{},
+		sessionTools:  map[string]string{},
+		bindings:      map[string]commandBinding{},
+		taskCounts:    map[string]int{},
+		taskCommands:  map[string][]string{},
+		pickerTargets: map[string]string{},
+		viewState:     viewHome,
+		mode:          modeHome,
+		getwd:         os.Getwd,
+		chdir:         os.Chdir,
+	}
+
+	createdModel, _ := m.createAndAttachTool("claude")
+	m = createdModel
+	createdName := m.sessionToAttach
+	if createdName == "" {
+		t.Fatal("expected created claude session name")
+	}
+	if !tmux.SessionExists(createdName) {
+		t.Fatalf("expected created session %q to exist", createdName)
+	}
+
+	newName := fmt.Sprintf("focus-%d", time.Now().UnixNano())
+	m.mode = modeRenameInput
+	m.renameTarget = createdName
+	m.renameInput = newName
+	m.shouldAttach = false
+	m.sessionToAttach = ""
+	m = m.applyRenameTarget()
+	m.homeNotice = ""
+
+	if !tmux.SessionExists(newName) {
+		t.Fatalf("expected renamed session %q to exist", newName)
+	}
+	if tmux.SessionExists(createdName) {
+		t.Fatalf("did not expect original session %q to still exist", createdName)
+	}
+
+	view := m.View()
+	newRowToken := newName + " repo:"
+	oldRowToken := createdName + " repo:"
+	if !contains(view, newRowToken) {
+		t.Fatalf("expected home view to show renamed session row %q, got: %s", newRowToken, view)
+	}
+	if strings.Count(view, newRowToken) != 1 {
+		t.Fatalf("expected renamed session row once, got %d in view: %s", strings.Count(view, newRowToken), view)
+	}
+	if contains(view, oldRowToken) {
+		t.Fatalf("expected original session row %q to be absent after rename, got: %s", oldRowToken, view)
+	}
+}
+
 func TestHomeAttachKeyOpensPickerWhenMultipleToolSessionsExist(t *testing.T) {
 	requireTmuxSessionCreation(t)
 
