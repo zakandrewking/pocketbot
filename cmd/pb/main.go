@@ -817,10 +817,6 @@ func (m model) applyRenameTarget() model {
 		m.homeNotice = "name can only use letters, numbers, ., _, -"
 		return m
 	}
-	if _, exists := m.sessions[newName]; exists {
-		m.homeNotice = fmt.Sprintf("session %s already exists", newName)
-		return m
-	}
 	if tmux.SessionExists(newName) {
 		m.homeNotice = fmt.Sprintf("session %s already exists", newName)
 		return m

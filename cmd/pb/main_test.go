@@ -1073,6 +1073,52 @@ func TestIntegrationRenameToPrefixedNameDoesNotKeepOriginalRow(t *testing.T) {
 	}
 }
 
+func TestIntegrationRenameToConfiguredNameAllowedWhenSessionNotRunning(t *testing.T) {
+	requireTmuxSessionCreation(t)
+
+	socketLevel := fmt.Sprintf("itest-rename-configured-%d", time.Now().UnixNano())
+	t.Setenv("PB_LEVEL", socketLevel)
+	defer tmux.KillServer()
+
+	if tmux.SessionExists("claude") {
+		t.Fatalf("expected isolated socket to start without claude session")
+	}
+	if err := tmux.CreateSession("codex", "sleep 60"); err != nil {
+		t.Skipf("tmux session unavailable in this environment: %v", err)
+	}
+	defer tmux.KillSession("codex")
+	defer tmux.KillSession("claude")
+
+	cfg := config.DefaultConfig()
+	m := model{
+		config: cfg,
+		sessions: map[string]*tmux.Session{
+			"claude": tmux.NewSession("claude", cfg.Claude.Command), // configured wrapper, not running
+			"codex":  tmux.NewSession("codex", cfg.Codex.Command),
+		},
+		sessionTools: map[string]string{
+			"claude": "claude",
+			"codex":  "codex",
+		},
+		bindings: map[string]commandBinding{},
+		mode:     modeRenameInput,
+		viewState: viewHome,
+		renameTarget: "codex",
+		renameInput:  "claude",
+	}
+
+	m = m.applyRenameTarget()
+	if !contains(m.homeNotice, "renamed codex to claude") {
+		t.Fatalf("expected successful rename notice, got %q", m.homeNotice)
+	}
+	if !tmux.SessionExists("claude") {
+		t.Fatal("expected claude session to exist after rename")
+	}
+	if tmux.SessionExists("codex") {
+		t.Fatal("expected codex session to be gone after rename")
+	}
+}
+
 func TestHomeAttachKeyOpensPickerWhenMultipleToolSessionsExist(t *testing.T) {
 	requireTmuxSessionCreation(t)
 
