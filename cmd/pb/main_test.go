@@ -1194,6 +1194,147 @@ func TestKDoesNotEnterKillModeWhenNothingRunning(t *testing.T) {
 	}
 }
 
+func TestFreshCommandForTool(t *testing.T) {
+	tests := []struct {
+		name    string
+		tool    string
+		command string
+		want    string
+	}{
+		{
+			name:    "claude removes --continue",
+			tool:    "claude",
+			command: "claude --continue --permission-mode acceptEdits",
+			want:    "claude --permission-mode acceptEdits",
+		},
+		{
+			name:    "claude without --continue unchanged",
+			tool:    "claude",
+			command: "claude --permission-mode acceptEdits",
+			want:    "claude --permission-mode acceptEdits",
+		},
+		{
+			name:    "codex removes resume --last",
+			tool:    "codex",
+			command: "codex resume --last",
+			want:    "codex",
+		},
+		{
+			name:    "codex custom with resume --last",
+			tool:    "codex",
+			command: "codex --model o4-mini resume --last",
+			want:    "codex --model o4-mini",
+		},
+		{
+			name:    "codex without resume unchanged",
+			tool:    "codex",
+			command: "codex --model o4-mini",
+			want:    "codex --model o4-mini",
+		},
+		{
+			name:    "cursor removes resume",
+			tool:    "cursor",
+			command: "agent resume",
+			want:    "agent",
+		},
+		{
+			name:    "cursor without resume unchanged",
+			tool:    "cursor",
+			command: "agent",
+			want:    "agent",
+		},
+		{
+			name:    "unknown tool unchanged",
+			tool:    "other",
+			command: "sometool --flag",
+			want:    "sometool --flag",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := freshCommandForTool(tt.tool, tt.command)
+			if got != tt.want {
+				t.Fatalf("freshCommandForTool(%q, %q) = %q, want %q", tt.tool, tt.command, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestFKeyTogglesFreshInNewMode(t *testing.T) {
+	m := model{
+		config:      config.DefaultConfig(),
+		sessions:    map[string]*tmux.Session{},
+		bindings:    map[string]commandBinding{},
+		windowWidth: 80,
+		viewState:   viewHome,
+		mode:        modeNewTool,
+	}
+
+	// Toggle on
+	updatedModel, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("f")})
+	m = updatedModel.(model)
+	if cmd != nil {
+		t.Fatal("f should not quit")
+	}
+	if !m.newToolFresh {
+		t.Fatal("f should enable fresh mode")
+	}
+	if !contains(m.View(), "fresh: ON") {
+		t.Fatalf("expected fresh ON indicator in view, got: %s", m.View())
+	}
+
+	// Toggle off
+	updatedModel, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("f")})
+	m = updatedModel.(model)
+	if m.newToolFresh {
+		t.Fatal("second f press should disable fresh mode")
+	}
+}
+
+func TestEscResetsFreshInNewMode(t *testing.T) {
+	m := model{
+		config:       config.DefaultConfig(),
+		sessions:     map[string]*tmux.Session{},
+		bindings:     map[string]commandBinding{},
+		windowWidth:  80,
+		viewState:    viewHome,
+		mode:         modeNewTool,
+		newToolFresh: true,
+	}
+
+	updatedModel, _ := m.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	m = updatedModel.(model)
+	if m.newToolFresh {
+		t.Fatal("esc should reset fresh flag")
+	}
+}
+
+func TestNewToolViewHasSpacing(t *testing.T) {
+	m := model{
+		config:      config.DefaultConfig(),
+		sessions:    map[string]*tmux.Session{},
+		bindings:    map[string]commandBinding{},
+		windowWidth: 80,
+		viewState:   viewHome,
+		mode:        modeNewTool,
+	}
+
+	view := m.View()
+	// Verify empty lines exist in the new tool view by checking that
+	// the tool list and options sections are separated
+	viewLines := strings.Split(view, "\n")
+	emptyCount := 0
+	for _, line := range viewLines {
+		if line == "" {
+			emptyCount++
+		}
+	}
+	if emptyCount < 2 {
+		t.Fatalf("expected at least 2 empty lines for spacing in new tool view, got %d in:\n%s", emptyCount, view)
+	}
+}
+
 func TestYoloCommandForTool(t *testing.T) {
 	tests := []struct {
 		name    string

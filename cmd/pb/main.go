@@ -94,6 +94,7 @@ type model struct {
 	shouldAttach    bool
 	sessionToAttach string // Name of session to attach to
 	homeNotice      string
+	newToolFresh    bool
 	newToolYolo     bool
 	dirQuery        string
 	dirSuggestions  []string
@@ -610,6 +611,27 @@ func fallbackCommand(tool, command string) string {
 	return command
 }
 
+// freshCommandForTool returns the command with resume/continue flags stripped
+// so the tool starts a new session without previous context.
+// Claude: removes --continue. Codex: removes "resume --last". Cursor: removes "resume".
+func freshCommandForTool(tool, command string) string {
+	switch tool {
+	case "claude":
+		cmd := strings.Replace(command, " --continue", "", 1)
+		return strings.TrimSpace(cmd)
+	case "codex":
+		cmd := strings.Replace(command, " resume --last", "", 1)
+		if cmd == command {
+			cmd = strings.Replace(command, " resume", "", 1)
+		}
+		return strings.TrimSpace(cmd)
+	case "cursor":
+		cmd := strings.Replace(command, " resume", "", 1)
+		return strings.TrimSpace(cmd)
+	}
+	return command
+}
+
 // yoloCommandForTool returns the command modified to run in yolo/auto-approve mode.
 // Claude uses --dangerously-skip-permissions (replaces --permission-mode acceptEdits).
 // Codex uses --yolo (global flag placed before subcommand).
@@ -693,6 +715,10 @@ func (m model) createAndAttachTool(tool string) (model, tea.Cmd) {
 	if command == "" {
 		m.homeNotice = fmt.Sprintf("%s is not configured", tool)
 		return m, nil
+	}
+	if m.newToolFresh {
+		command = freshCommandForTool(tool, command)
+		m.newToolFresh = false
 	}
 	yoloEnabled := m.newToolYolo
 	if m.newToolYolo {
@@ -987,6 +1013,7 @@ func (m model) updateHome(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if m.mode == modeNewTool || m.mode == modeKillTool || m.mode == modeRenameTool || m.mode == modeRenameInput {
 			m.mode = modeHome
 			m.homeNotice = ""
+			m.newToolFresh = false
 			m.newToolYolo = false
 			m.renameTarget = ""
 			m.renameInput = ""
@@ -996,6 +1023,7 @@ func (m model) updateHome(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if m.mode != modeHome {
 			m.mode = modeHome
 			m.homeNotice = ""
+			m.newToolFresh = false
 			m.newToolYolo = false
 			m.renameTarget = ""
 			m.renameInput = ""
@@ -1071,6 +1099,10 @@ func (m model) updateHome(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 	case modeNewTool:
+		if key == "f" {
+			m.newToolFresh = !m.newToolFresh
+			return m, nil
+		}
 		if key == "y" {
 			m.newToolYolo = !m.newToolYolo
 			return m, nil
@@ -1374,6 +1406,7 @@ func (m model) viewHome() string {
 	case modeNewTool:
 		yoloStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#FF8A00")).Bold(true)
 		cwd := m.currentDir()
+		lines = append(lines, "")
 		if m.toolEnabled("claude") {
 			if m.toolAlreadyRunningInDir("claude", cwd) {
 				lines = append(lines, metaStyle.Render("claude already running"))
@@ -1397,6 +1430,12 @@ func (m model) viewHome() string {
 		}
 		if !m.toolEnabled("claude") && !m.toolEnabled("codex") && !m.toolEnabled("cursor") {
 			lines = append(lines, metaStyle.Render("all built-in tools are disabled"))
+		}
+		lines = append(lines, "")
+		if m.newToolFresh {
+			lines = append(lines, fmt.Sprintf("%s fresh: %s", keyStyle.Render("f"), yoloStyle.Render("ON (no previous context)")))
+		} else {
+			lines = append(lines, fmt.Sprintf("%s fresh: off", keyStyle.Render("f")))
 		}
 		if m.newToolYolo {
 			lines = append(lines, fmt.Sprintf("%s yolo: %s", keyStyle.Render("y"), yoloStyle.Render("ON (skip all permissions)")))
