@@ -916,6 +916,67 @@ func TestValidSessionNameAllowsSpaces(t *testing.T) {
 	}
 }
 
+func TestRenameInputAllowsTypingDAndEsc(t *testing.T) {
+	m := model{
+		config:       config.DefaultConfig(),
+		sessions:     map[string]*tmux.Session{},
+		bindings:     map[string]commandBinding{},
+		viewState:    viewHome,
+		mode:         modeRenameInput,
+		renameTarget: "claude",
+		renameInput:  "my",
+	}
+
+	// Typing "d" should append to input, not exit to home
+	updatedModel, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("d")})
+	m = updatedModel.(model)
+	if cmd != nil {
+		t.Fatal("d in rename input should not quit")
+	}
+	if m.mode != modeRenameInput {
+		t.Fatal("d should stay in rename input mode, not exit")
+	}
+	if m.renameInput != "myd" {
+		t.Fatalf("expected input 'myd', got %q", m.renameInput)
+	}
+
+	// Esc should cancel rename
+	updatedModel, _ = m.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	m = updatedModel.(model)
+	if m.mode != modeHome {
+		t.Fatal("esc should exit rename input")
+	}
+	if m.renameTarget != "" {
+		t.Fatal("esc should clear rename target")
+	}
+}
+
+func TestDirJumpTypingDDoesNotExit(t *testing.T) {
+	m := model{
+		config:      config.DefaultConfig(),
+		sessions:    map[string]*tmux.Session{},
+		bindings:    map[string]commandBinding{},
+		viewState:   viewHome,
+		mode:        modeDirJump,
+		dirQuery:    "pro",
+		lookupDirs: func(query string) ([]string, error) {
+			return []string{"/tmp/prod"}, nil
+		},
+	}
+
+	updatedModel, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("d")})
+	m = updatedModel.(model)
+	if cmd != nil {
+		t.Fatal("d in dir jump should not quit")
+	}
+	if m.mode != modeDirJump {
+		t.Fatal("d should stay in dir jump mode, not exit")
+	}
+	if m.dirQuery != "prod" {
+		t.Fatalf("expected query 'prod', got %q", m.dirQuery)
+	}
+}
+
 func TestRenameInputShowsCursorIndicator(t *testing.T) {
 	m := model{
 		config:       config.DefaultConfig(),

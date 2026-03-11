@@ -1000,40 +1000,24 @@ func (m model) updateHome(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	key := msg.String()
 	m.refreshBindings()
 
-	switch key {
-	case "ctrl+c":
-		// Kill all tmux sessions and exit
+	// ctrl+c always works regardless of mode
+	if key == "ctrl+c" {
 		tmux.KillServer()
 		return m, tea.Quit
-	case "d":
-		if m.mode == modeHome {
-			// Quit without killing sessions
-			return m, tea.Quit
-		}
-		if m.mode == modeNewTool || m.mode == modeKillTool || m.mode == modeRenameTool || m.mode == modeRenameInput {
-			m.mode = modeHome
-			m.homeNotice = ""
-			m.newToolFresh = false
-			m.newToolYolo = false
-			m.renameTarget = ""
-			m.renameInput = ""
-			return m, nil
-		}
-	case "esc":
-		if m.mode != modeHome {
-			m.mode = modeHome
-			m.homeNotice = ""
-			m.newToolFresh = false
-			m.newToolYolo = false
-			m.renameTarget = ""
-			m.renameInput = ""
-			return m, nil
-		}
 	}
 
+	// Text-input modes must be handled before global shortcuts so that
+	// keys like "d" and "esc" are processed as text input, not as
+	// navigation shortcuts.
 	switch m.mode {
 	case modeRenameInput:
 		switch msg.Type {
+		case tea.KeyEsc:
+			m.mode = modeHome
+			m.homeNotice = ""
+			m.renameTarget = ""
+			m.renameInput = ""
+			return m, nil
 		case tea.KeyEnter:
 			m = m.applyRenameTarget()
 			return m, nil
@@ -1098,6 +1082,37 @@ func (m model) updateHome(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		default:
 			return m, nil
 		}
+	}
+
+	// Global shortcuts (after text-input modes have been handled above)
+	switch key {
+	case "d":
+		if m.mode == modeHome {
+			// Quit without killing sessions
+			return m, tea.Quit
+		}
+		if m.mode == modeNewTool || m.mode == modeKillTool || m.mode == modeRenameTool {
+			m.mode = modeHome
+			m.homeNotice = ""
+			m.newToolFresh = false
+			m.newToolYolo = false
+			m.renameTarget = ""
+			m.renameInput = ""
+			return m, nil
+		}
+	case "esc":
+		if m.mode != modeHome {
+			m.mode = modeHome
+			m.homeNotice = ""
+			m.newToolFresh = false
+			m.newToolYolo = false
+			m.renameTarget = ""
+			m.renameInput = ""
+			return m, nil
+		}
+	}
+
+	switch m.mode {
 	case modeNewTool:
 		if key == "f" {
 			m.newToolFresh = !m.newToolFresh
