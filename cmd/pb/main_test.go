@@ -543,6 +543,7 @@ func TestDirJumpTypingDoesNotSelectSuggestion(t *testing.T) {
 		viewState:      viewHome,
 		mode:           modeDirJump,
 		dirQuery:       "pro",
+		dirCursor:      3,
 		dirSuggestions: []string{"/tmp/one", "/tmp/two"},
 		lookupDirs: func(query string) ([]string, error) {
 			if query != "prob" {
@@ -824,12 +825,7 @@ func TestApplyRenameTargetRenamesSessionInModel(t *testing.T) {
 	defer func() { listSessionsFn = originalListSessions }()
 	renameSessionFn = func(oldName, newName string) error { return nil }
 	setSessionToolFn = func(sessionName, tool string) error { return nil }
-	listCalls := 0
 	listSessionsFn = func() []string {
-		listCalls++
-		if listCalls == 1 {
-			return []string{"codex"}
-		}
 		return []string{"focus"}
 	}
 
@@ -925,6 +921,7 @@ func TestRenameInputAllowsTypingDAndEsc(t *testing.T) {
 		mode:         modeRenameInput,
 		renameTarget: "claude",
 		renameInput:  "my",
+		renameCursor: 2,
 	}
 
 	// Typing "d" should append to input, not exit to home
@@ -951,6 +948,117 @@ func TestRenameInputAllowsTypingDAndEsc(t *testing.T) {
 	}
 }
 
+func TestRenameInputReadlineShortcuts(t *testing.T) {
+	setup := func() model {
+		return model{
+			config:       config.DefaultConfig(),
+			sessions:     map[string]*tmux.Session{},
+			bindings:     map[string]commandBinding{},
+			viewState:    viewHome,
+			mode:         modeRenameInput,
+			renameTarget: "claude",
+			renameInput:  "hello world",
+			renameCursor: 5, // cursor after "hello"
+		}
+	}
+
+	t.Run("ctrl+a moves to start", func(t *testing.T) {
+		m := setup()
+		updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyCtrlA})
+		m = updated.(model)
+		if m.renameCursor != 0 {
+			t.Fatalf("expected cursor 0, got %d", m.renameCursor)
+		}
+	})
+
+	t.Run("ctrl+e moves to end", func(t *testing.T) {
+		m := setup()
+		updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyCtrlE})
+		m = updated.(model)
+		if m.renameCursor != 11 {
+			t.Fatalf("expected cursor 11, got %d", m.renameCursor)
+		}
+	})
+
+	t.Run("ctrl+u clears to start", func(t *testing.T) {
+		m := setup()
+		updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyCtrlU})
+		m = updated.(model)
+		if m.renameInput != " world" {
+			t.Fatalf("expected ' world', got %q", m.renameInput)
+		}
+		if m.renameCursor != 0 {
+			t.Fatalf("expected cursor 0, got %d", m.renameCursor)
+		}
+	})
+
+	t.Run("ctrl+k clears to end", func(t *testing.T) {
+		m := setup()
+		updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyCtrlK})
+		m = updated.(model)
+		if m.renameInput != "hello" {
+			t.Fatalf("expected 'hello', got %q", m.renameInput)
+		}
+		if m.renameCursor != 5 {
+			t.Fatalf("expected cursor 5, got %d", m.renameCursor)
+		}
+	})
+
+	t.Run("ctrl+w deletes word back", func(t *testing.T) {
+		m := setup()
+		updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyCtrlW})
+		m = updated.(model)
+		if m.renameInput != " world" {
+			t.Fatalf("expected ' world', got %q", m.renameInput)
+		}
+		if m.renameCursor != 0 {
+			t.Fatalf("expected cursor 0, got %d", m.renameCursor)
+		}
+	})
+
+	t.Run("left arrow moves cursor back", func(t *testing.T) {
+		m := setup()
+		updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyLeft})
+		m = updated.(model)
+		if m.renameCursor != 4 {
+			t.Fatalf("expected cursor 4, got %d", m.renameCursor)
+		}
+	})
+
+	t.Run("right arrow moves cursor forward", func(t *testing.T) {
+		m := setup()
+		updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyRight})
+		m = updated.(model)
+		if m.renameCursor != 6 {
+			t.Fatalf("expected cursor 6, got %d", m.renameCursor)
+		}
+	})
+
+	t.Run("insert at cursor position", func(t *testing.T) {
+		m := setup()
+		updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("X")})
+		m = updated.(model)
+		if m.renameInput != "helloX world" {
+			t.Fatalf("expected 'helloX world', got %q", m.renameInput)
+		}
+		if m.renameCursor != 6 {
+			t.Fatalf("expected cursor 6, got %d", m.renameCursor)
+		}
+	})
+
+	t.Run("backspace at cursor position", func(t *testing.T) {
+		m := setup()
+		updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyBackspace})
+		m = updated.(model)
+		if m.renameInput != "hell world" {
+			t.Fatalf("expected 'hell world', got %q", m.renameInput)
+		}
+		if m.renameCursor != 4 {
+			t.Fatalf("expected cursor 4, got %d", m.renameCursor)
+		}
+	})
+}
+
 func TestDirJumpTypingDDoesNotExit(t *testing.T) {
 	m := model{
 		config:      config.DefaultConfig(),
@@ -959,6 +1067,7 @@ func TestDirJumpTypingDDoesNotExit(t *testing.T) {
 		viewState:   viewHome,
 		mode:        modeDirJump,
 		dirQuery:    "pro",
+		dirCursor:   3,
 		lookupDirs: func(query string) ([]string, error) {
 			return []string{"/tmp/prod"}, nil
 		},

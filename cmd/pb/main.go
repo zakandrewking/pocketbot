@@ -91,12 +91,14 @@ type model struct {
 	pickerTargets   map[string]string
 	renameTarget    string
 	renameInput     string
+	renameCursor    int
 	shouldAttach    bool
 	sessionToAttach string // Name of session to attach to
 	homeNotice      string
 	newToolFresh    bool
 	newToolYolo     bool
 	dirQuery        string
+	dirCursor       int
 	dirSuggestions  []string
 	dirSelection    int
 	hasFasder       bool
@@ -818,6 +820,7 @@ func (m model) beginRenameTarget(name string) model {
 	m.mode = modeRenameInput
 	m.renameTarget = name
 	m.renameInput = name
+	m.renameCursor = len(name)
 	m.homeNotice = ""
 	return m
 }
@@ -864,6 +867,7 @@ func (m model) applyRenameTarget() model {
 	delete(m.bindings, oldName)
 	m.renameTarget = ""
 	m.renameInput = ""
+	m.renameCursor = 0
 	m.mode = modeHome
 	m.refreshBindings()
 	m.homeNotice = fmt.Sprintf("renamed %s to %s", oldName, newName)
@@ -998,7 +1002,6 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 func (m model) updateHome(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	key := msg.String()
-	m.refreshBindings()
 
 	// ctrl+c always works regardless of mode
 	if key == "ctrl+c" {
@@ -1011,37 +1014,77 @@ func (m model) updateHome(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	// navigation shortcuts.
 	switch m.mode {
 	case modeRenameInput:
-		switch msg.Type {
-		case tea.KeyEsc:
+		switch {
+		case msg.Type == tea.KeyEsc:
 			m.mode = modeHome
 			m.homeNotice = ""
 			m.renameTarget = ""
 			m.renameInput = ""
+			m.renameCursor = 0
 			return m, nil
-		case tea.KeyEnter:
+		case msg.Type == tea.KeyEnter:
 			m = m.applyRenameTarget()
 			return m, nil
-		case tea.KeyBackspace, tea.KeyDelete:
-			if len(m.renameInput) > 0 {
-				m.renameInput = m.renameInput[:len(m.renameInput)-1]
+		case msg.Type == tea.KeyLeft:
+			if m.renameCursor > 0 {
+				m.renameCursor--
 			}
 			return m, nil
-		case tea.KeyRunes:
-			m.renameInput += string(msg.Runes)
+		case msg.Type == tea.KeyRight:
+			if m.renameCursor < len(m.renameInput) {
+				m.renameCursor++
+			}
+			return m, nil
+		case key == "ctrl+a", msg.Type == tea.KeyHome:
+			m.renameCursor = 0
+			return m, nil
+		case key == "ctrl+e", msg.Type == tea.KeyEnd:
+			m.renameCursor = len(m.renameInput)
+			return m, nil
+		case key == "ctrl+u":
+			m.renameInput = m.renameInput[m.renameCursor:]
+			m.renameCursor = 0
+			return m, nil
+		case key == "ctrl+k":
+			m.renameInput = m.renameInput[:m.renameCursor]
+			return m, nil
+		case key == "ctrl+w":
+			if m.renameCursor > 0 {
+				i := m.renameCursor - 1
+				for i > 0 && m.renameInput[i-1] == ' ' {
+					i--
+				}
+				for i > 0 && m.renameInput[i-1] != ' ' {
+					i--
+				}
+				m.renameInput = m.renameInput[:i] + m.renameInput[m.renameCursor:]
+				m.renameCursor = i
+			}
+			return m, nil
+		case msg.Type == tea.KeyBackspace, msg.Type == tea.KeyDelete:
+			if m.renameCursor > 0 {
+				m.renameInput = m.renameInput[:m.renameCursor-1] + m.renameInput[m.renameCursor:]
+				m.renameCursor--
+			}
+			return m, nil
+		case msg.Type == tea.KeyRunes:
+			m.renameInput = m.renameInput[:m.renameCursor] + string(msg.Runes) + m.renameInput[m.renameCursor:]
+			m.renameCursor += len(string(msg.Runes))
 			return m, nil
 		default:
 			return m, nil
 		}
 	case modeDirJump:
-		switch msg.Type {
-		case tea.KeyEsc:
+		switch {
+		case msg.Type == tea.KeyEsc:
 			m.mode = modeHome
 			m.dirQuery = ""
+			m.dirCursor = 0
 			m.dirSuggestions = nil
 			m.dirSelection = 0
 			m.homeNotice = ""
 			return m, nil
-		case tea.KeyEnter:
+		case msg.Type == tea.KeyEnter:
 			if len(m.dirSuggestions) == 0 {
 				m.refreshDirSuggestions()
 			}
@@ -1053,7 +1096,7 @@ func (m model) updateHome(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				m.dirSelection = 0
 			}
 			return m.applyDirChange(m.dirSuggestions[m.dirSelection])
-		case tea.KeyUp:
+		case msg.Type == tea.KeyUp:
 			if len(m.dirSuggestions) > 0 {
 				if m.dirSelection <= 0 {
 					m.dirSelection = len(m.dirSuggestions) - 1
@@ -1062,20 +1105,64 @@ func (m model) updateHome(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				}
 			}
 			return m, nil
-		case tea.KeyDown:
+		case msg.Type == tea.KeyDown:
 			if len(m.dirSuggestions) > 0 {
 				m.dirSelection = (m.dirSelection + 1) % len(m.dirSuggestions)
 			}
 			return m, nil
-		case tea.KeyBackspace, tea.KeyDelete:
-			if len(m.dirQuery) > 0 {
-				m.dirQuery = m.dirQuery[:len(m.dirQuery)-1]
+		case msg.Type == tea.KeyLeft:
+			if m.dirCursor > 0 {
+				m.dirCursor--
+			}
+			return m, nil
+		case msg.Type == tea.KeyRight:
+			if m.dirCursor < len(m.dirQuery) {
+				m.dirCursor++
+			}
+			return m, nil
+		case key == "ctrl+a", msg.Type == tea.KeyHome:
+			m.dirCursor = 0
+			return m, nil
+		case key == "ctrl+e", msg.Type == tea.KeyEnd:
+			m.dirCursor = len(m.dirQuery)
+			return m, nil
+		case key == "ctrl+u":
+			m.dirQuery = m.dirQuery[m.dirCursor:]
+			m.dirCursor = 0
+			m.dirSelection = 0
+			m.refreshDirSuggestions()
+			return m, nil
+		case key == "ctrl+k":
+			m.dirQuery = m.dirQuery[:m.dirCursor]
+			m.dirSelection = 0
+			m.refreshDirSuggestions()
+			return m, nil
+		case key == "ctrl+w":
+			if m.dirCursor > 0 {
+				i := m.dirCursor - 1
+				for i > 0 && m.dirQuery[i-1] == ' ' {
+					i--
+				}
+				for i > 0 && m.dirQuery[i-1] != ' ' {
+					i--
+				}
+				m.dirQuery = m.dirQuery[:i] + m.dirQuery[m.dirCursor:]
+				m.dirCursor = i
+				m.dirSelection = 0
+				m.refreshDirSuggestions()
+			}
+			return m, nil
+		case msg.Type == tea.KeyBackspace, msg.Type == tea.KeyDelete:
+			if m.dirCursor > 0 {
+				m.dirQuery = m.dirQuery[:m.dirCursor-1] + m.dirQuery[m.dirCursor:]
+				m.dirCursor--
 			}
 			m.dirSelection = 0
 			m.refreshDirSuggestions()
 			return m, nil
-		case tea.KeyRunes:
-			m.dirQuery += string(msg.Runes)
+		case msg.Type == tea.KeyRunes:
+			m.dirQuery = m.dirQuery[:m.dirCursor] + string(msg.Runes) + m.dirQuery[m.dirCursor:]
+			m.dirCursor += len(string(msg.Runes))
 			m.dirSelection = 0
 			m.refreshDirSuggestions()
 			return m, nil
@@ -1083,6 +1170,10 @@ func (m model) updateHome(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 	}
+
+	// Refresh bindings only for non-text-input modes (avoids shelling out
+	// to tmux on every keystroke while the user is typing).
+	m.refreshBindings()
 
 	// Global shortcuts (after text-input modes have been handled above)
 	switch key {
@@ -1098,6 +1189,7 @@ func (m model) updateHome(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.newToolYolo = false
 			m.renameTarget = ""
 			m.renameInput = ""
+			m.renameCursor = 0
 			return m, nil
 		}
 	case "esc":
@@ -1108,6 +1200,7 @@ func (m model) updateHome(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.newToolYolo = false
 			m.renameTarget = ""
 			m.renameInput = ""
+			m.renameCursor = 0
 			return m, nil
 		}
 	}
@@ -1269,6 +1362,7 @@ func (m model) updateHome(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.mode = modeDirJump
 		m.homeNotice = ""
 		m.dirQuery = ""
+		m.dirCursor = 0
 		m.dirSuggestions = nil
 		m.dirSelection = 0
 		m.refreshDirSuggestions()
@@ -1398,6 +1492,7 @@ func (m model) viewHome() string {
 			Foreground(lipgloss.Color("#4DA3FF"))
 		hintStyle := lipgloss.NewStyle().
 			Foreground(lipgloss.Color("#AAAAAA"))
+		cursorStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#4DA3FF")).Bold(true)
 		selectedStyle := lipgloss.NewStyle().
 			Foreground(lipgloss.Color("#04B575")).
 			Bold(true)
@@ -1406,7 +1501,7 @@ func (m model) viewHome() string {
 
 		lines = append(lines,
 			jumpTitleStyle.Render("z fasder jump"),
-			fmt.Sprintf("%s%s", searchLabelStyle.Render("search: "), m.dirQuery),
+			fmt.Sprintf("%s%s%s%s", searchLabelStyle.Render("search: "), m.dirQuery[:m.dirCursor], cursorStyle.Render("▌"), m.dirQuery[m.dirCursor:]),
 			hintStyle.Render("up/down move   enter select   esc cancel"),
 		)
 		for i, suggestion := range m.dirSuggestions {
@@ -1608,7 +1703,7 @@ func (m model) viewHome() string {
 	case modeRenameInput:
 		lines = append(lines, metaStyle.Render(fmt.Sprintf("rename %s", m.renameTarget)))
 		cursorStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#4DA3FF")).Bold(true)
-		lines = append(lines, fmt.Sprintf("new name: %s%s", m.renameInput, cursorStyle.Render("▌")))
+		lines = append(lines, fmt.Sprintf("new name: %s%s%s", m.renameInput[:m.renameCursor], cursorStyle.Render("▌"), m.renameInput[m.renameCursor:]))
 		lines = append(lines, "enter confirm   esc cancel")
 	default:
 		claude := m.runningToolSessions("claude")
