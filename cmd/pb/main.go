@@ -97,6 +97,7 @@ type model struct {
 	homeNotice      string
 	newToolFresh    bool
 	newToolYolo     bool
+	newToolAuto     bool
 	dirQuery        string
 	dirCursor       int
 	dirSuggestions  []string
@@ -598,6 +599,9 @@ func fallbackCommand(tool, command string) string {
 		if command == "claude --continue --dangerously-skip-permissions" {
 			return "claude --continue --dangerously-skip-permissions || claude --dangerously-skip-permissions"
 		}
+		if command == "claude --continue --permission-mode auto" {
+			return "claude --continue --permission-mode auto || claude --permission-mode auto"
+		}
 	case "codex":
 		if command == "codex resume --last" {
 			return "codex resume --last || codex"
@@ -632,6 +636,19 @@ func freshCommandForTool(tool, command string) string {
 		return strings.TrimSpace(cmd)
 	}
 	return command
+}
+
+// autoCommandForTool returns the command modified to run claude with
+// --permission-mode auto. Only claude is affected; other tools are unchanged.
+func autoCommandForTool(tool, command string) string {
+	if tool != "claude" {
+		return command
+	}
+	cmd := strings.ReplaceAll(command, "--permission-mode acceptEdits", "--permission-mode auto")
+	if cmd == command {
+		cmd = strings.TrimSpace(command) + " --permission-mode auto"
+	}
+	return strings.TrimSpace(cmd)
 }
 
 // yoloCommandForTool returns the command modified to run in yolo/auto-approve mode.
@@ -721,6 +738,10 @@ func (m model) createAndAttachTool(tool string) (model, tea.Cmd) {
 	if m.newToolFresh {
 		command = freshCommandForTool(tool, command)
 		m.newToolFresh = false
+	}
+	if m.newToolAuto {
+		command = autoCommandForTool(tool, command)
+		m.newToolAuto = false
 	}
 	yoloEnabled := m.newToolYolo
 	if m.newToolYolo {
@@ -1187,6 +1208,7 @@ func (m model) updateHome(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.homeNotice = ""
 			m.newToolFresh = false
 			m.newToolYolo = false
+			m.newToolAuto = false
 			m.renameTarget = ""
 			m.renameInput = ""
 			m.renameCursor = 0
@@ -1198,6 +1220,7 @@ func (m model) updateHome(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.homeNotice = ""
 			m.newToolFresh = false
 			m.newToolYolo = false
+			m.newToolAuto = false
 			m.renameTarget = ""
 			m.renameInput = ""
 			m.renameCursor = 0
@@ -1211,8 +1234,18 @@ func (m model) updateHome(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.newToolFresh = !m.newToolFresh
 			return m, nil
 		}
+		if key == "a" {
+			m.newToolAuto = !m.newToolAuto
+			if m.newToolAuto {
+				m.newToolYolo = false
+			}
+			return m, nil
+		}
 		if key == "y" {
 			m.newToolYolo = !m.newToolYolo
+			if m.newToolYolo {
+				m.newToolAuto = false
+			}
 			return m, nil
 		}
 		cwd := m.currentDir()
@@ -1546,6 +1579,11 @@ func (m model) viewHome() string {
 			lines = append(lines, fmt.Sprintf("%s fresh: %s", keyStyle.Render("f"), yoloStyle.Render("ON (no previous context)")))
 		} else {
 			lines = append(lines, fmt.Sprintf("%s fresh: off", keyStyle.Render("f")))
+		}
+		if m.newToolAuto {
+			lines = append(lines, fmt.Sprintf("%s auto: %s", keyStyle.Render("a"), yoloStyle.Render("ON (claude --permission-mode auto)")))
+		} else {
+			lines = append(lines, fmt.Sprintf("%s auto: off", keyStyle.Render("a")))
 		}
 		if m.newToolYolo {
 			lines = append(lines, fmt.Sprintf("%s yolo: %s", keyStyle.Render("y"), yoloStyle.Render("ON (skip all permissions)")))

@@ -1505,6 +1505,136 @@ func TestNewToolViewHasSpacing(t *testing.T) {
 	}
 }
 
+func TestAutoCommandForTool(t *testing.T) {
+	tests := []struct {
+		name    string
+		tool    string
+		command string
+		want    string
+	}{
+		{
+			name:    "claude default command",
+			tool:    "claude",
+			command: "claude --continue --permission-mode acceptEdits",
+			want:    "claude --continue --permission-mode auto",
+		},
+		{
+			name:    "claude custom command without permission-mode",
+			tool:    "claude",
+			command: "claude --continue",
+			want:    "claude --continue --permission-mode auto",
+		},
+		{
+			name:    "codex unchanged",
+			tool:    "codex",
+			command: "codex resume --last",
+			want:    "codex resume --last",
+		},
+		{
+			name:    "cursor unchanged",
+			tool:    "cursor",
+			command: "agent resume",
+			want:    "agent resume",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := autoCommandForTool(tt.tool, tt.command)
+			if got != tt.want {
+				t.Fatalf("autoCommandForTool(%q, %q) = %q, want %q", tt.tool, tt.command, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestAKeyTogglesAutoInNewMode(t *testing.T) {
+	m := model{
+		config:      config.DefaultConfig(),
+		sessions:    map[string]*tmux.Session{},
+		bindings:    map[string]commandBinding{},
+		windowWidth: 80,
+		viewState:   viewHome,
+		mode:        modeNewTool,
+	}
+
+	// Toggle on
+	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("a")})
+	m = updated.(model)
+	if cmd != nil {
+		t.Fatal("a should not quit")
+	}
+	if !m.newToolAuto {
+		t.Fatal("a should enable auto mode")
+	}
+	if !contains(m.View(), "auto: ON") {
+		t.Fatalf("expected auto ON indicator in view, got: %s", m.View())
+	}
+
+	// Toggle off
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("a")})
+	m = updated.(model)
+	if m.newToolAuto {
+		t.Fatal("second a press should disable auto mode")
+	}
+}
+
+func TestAutoAndYoloAreMutuallyExclusive(t *testing.T) {
+	m := model{
+		config:      config.DefaultConfig(),
+		sessions:    map[string]*tmux.Session{},
+		bindings:    map[string]commandBinding{},
+		windowWidth: 80,
+		viewState:   viewHome,
+		mode:        modeNewTool,
+	}
+
+	// Enable yolo
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("y")})
+	m = updated.(model)
+	if !m.newToolYolo {
+		t.Fatal("y should enable yolo")
+	}
+
+	// Enable auto — yolo should turn off
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("a")})
+	m = updated.(model)
+	if !m.newToolAuto {
+		t.Fatal("a should enable auto")
+	}
+	if m.newToolYolo {
+		t.Fatal("enabling auto should disable yolo")
+	}
+
+	// Enable yolo back — auto should turn off
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("y")})
+	m = updated.(model)
+	if !m.newToolYolo {
+		t.Fatal("y should enable yolo")
+	}
+	if m.newToolAuto {
+		t.Fatal("enabling yolo should disable auto")
+	}
+}
+
+func TestEscResetsAutoInNewMode(t *testing.T) {
+	m := model{
+		config:      config.DefaultConfig(),
+		sessions:    map[string]*tmux.Session{},
+		bindings:    map[string]commandBinding{},
+		windowWidth: 80,
+		viewState:   viewHome,
+		mode:        modeNewTool,
+		newToolAuto: true,
+	}
+
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	m = updated.(model)
+	if m.newToolAuto {
+		t.Fatal("esc should reset auto flag")
+	}
+}
+
 func TestYoloCommandForTool(t *testing.T) {
 	tests := []struct {
 		name    string
@@ -1703,6 +1833,12 @@ func TestFallbackCommand(t *testing.T) {
 			tool:    "codex",
 			command: "codex --yolo resume --last",
 			want:    "codex --yolo resume --last || codex --yolo",
+		},
+		{
+			name:    "claude auto fallback",
+			tool:    "claude",
+			command: "claude --continue --permission-mode auto",
+			want:    "claude --continue --permission-mode auto || claude --permission-mode auto",
 		},
 	}
 
