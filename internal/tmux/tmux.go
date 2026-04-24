@@ -41,7 +41,33 @@ func getNestingLevel() int {
 // cmd creates a tmux command using pocketbot's socket
 func cmd(args ...string) *exec.Cmd {
 	fullArgs := append([]string{"-L", getSocketName()}, args...)
-	return exec.Command("tmux", fullArgs...)
+	c := exec.Command("tmux", fullArgs...)
+	c.Env = withoutEnv(os.Environ(), "TMUX")
+	return c
+}
+
+func withoutEnv(env []string, key string) []string {
+	prefix := key + "="
+	filtered := make([]string, 0, len(env))
+	for _, entry := range env {
+		if strings.HasPrefix(entry, prefix) {
+			continue
+		}
+		filtered = append(filtered, entry)
+	}
+	return filtered
+}
+
+func runCmd(args ...string) error {
+	out, err := cmd(args...).CombinedOutput()
+	if err == nil {
+		return nil
+	}
+	msg := strings.TrimSpace(string(out))
+	if msg == "" {
+		return fmt.Errorf("tmux %s: %w", strings.Join(args, " "), err)
+	}
+	return fmt.Errorf("tmux %s: %w: %s", strings.Join(args, " "), err, msg)
 }
 
 func sessionIDByName(name string) string {
@@ -94,32 +120,32 @@ func CreateSession(name, command string) error {
 	nextLevel := getNestingLevel() + 1
 	envCmd := fmt.Sprintf("export PB_LEVEL=%d; export PB_CWD='%s'; %s", nextLevel, cwd, command)
 
-	if err := cmd("new-session", "-d", "-s", name, "-c", cwd, "sh", "-c", envCmd).Run(); err != nil {
+	if err := runCmd("new-session", "-d", "-s", name, "-c", cwd, "sh", "-c", envCmd); err != nil {
 		return err
 	}
 
 	// Store the launch directory as a tmux session option (for easy querying)
-	if err := cmd("set-option", "-t", sessionTarget(name), "@pb_cwd", cwd).Run(); err != nil {
+	if err := runCmd("set-option", "-t", sessionTarget(name), "@pb_cwd", cwd); err != nil {
 		// Non-fatal - just means we can't check directory later
 	}
 	// Store which configured command this session belongs to.
-	if err := cmd("set-option", "-t", sessionTarget(name), "@pb_command", name).Run(); err != nil {
+	if err := runCmd("set-option", "-t", sessionTarget(name), "@pb_command", name); err != nil {
 		// Non-fatal - binding can still fall back to session name.
 	}
 
 	// Hide status bar to save screen space
-	if err := cmd("set-option", "-t", sessionTarget(name), "status", "off").Run(); err != nil {
+	if err := runCmd("set-option", "-t", sessionTarget(name), "status", "off"); err != nil {
 		return err
 	}
 
 	// Bind Ctrl+D to detach (no prefix needed)
 	// This only affects pocketbot's tmux server, not user's main tmux
-	if err := cmd("bind-key", "-n", "C-d", "detach-client").Run(); err != nil {
+	if err := runCmd("bind-key", "-n", "C-d", "detach-client"); err != nil {
 		return err
 	}
 
 	// Show brief message on attach about Ctrl+D (stays for 3 seconds)
-	if err := cmd("set-option", "-t", sessionTarget(name), "display-time", "3000").Run(); err != nil {
+	if err := runCmd("set-option", "-t", sessionTarget(name), "display-time", "3000"); err != nil {
 		return err
 	}
 

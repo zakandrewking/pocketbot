@@ -1,9 +1,29 @@
 package tmux
 
 import (
+	"reflect"
 	"testing"
 	"time"
 )
+
+func TestWithoutEnvRemovesOnlyRequestedKey(t *testing.T) {
+	env := []string{
+		"PATH=/usr/bin",
+		"TMUX=/private/tmp/tmux-501/default,123,0",
+		"TMUX_PANE=%1",
+		"PB_LEVEL=1",
+	}
+
+	got := withoutEnv(env, "TMUX")
+	want := []string{
+		"PATH=/usr/bin",
+		"TMUX_PANE=%1",
+		"PB_LEVEL=1",
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("withoutEnv()=%v, want %v", got, want)
+	}
+}
 
 func TestNextActivityPollInterval(t *testing.T) {
 	tests := []struct {
