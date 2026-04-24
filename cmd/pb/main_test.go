@@ -1525,10 +1525,16 @@ func TestAutoCommandForTool(t *testing.T) {
 			want:    "claude --continue --permission-mode auto",
 		},
 		{
-			name:    "codex unchanged",
+			name:    "codex default command",
 			tool:    "codex",
 			command: "codex resume --last",
-			want:    "codex resume --last",
+			want:    "codex --full-auto resume --last",
+		},
+		{
+			name:    "codex custom command",
+			tool:    "codex",
+			command: "codex --model o4-mini",
+			want:    "codex --full-auto --model o4-mini",
 		},
 		{
 			name:    "cursor unchanged",
@@ -1833,6 +1839,12 @@ func TestFallbackCommand(t *testing.T) {
 			tool:    "codex",
 			command: "codex --yolo resume --last",
 			want:    "codex --yolo resume --last || codex --yolo",
+		},
+		{
+			name:    "codex auto fallback",
+			tool:    "codex",
+			command: "codex --full-auto resume --last",
+			want:    "codex --full-auto resume --last || codex --full-auto",
 		},
 		{
 			name:    "claude auto fallback",

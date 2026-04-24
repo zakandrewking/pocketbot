@@ -606,6 +606,9 @@ func fallbackCommand(tool, command string) string {
 		if command == "codex resume --last" {
 			return "codex resume --last || codex"
 		}
+		if command == "codex --full-auto resume --last" {
+			return "codex --full-auto resume --last || codex --full-auto"
+		}
 		if command == "codex --yolo resume --last" {
 			return "codex --yolo resume --last || codex --yolo"
 		}
@@ -638,17 +641,22 @@ func freshCommandForTool(tool, command string) string {
 	return command
 }
 
-// autoCommandForTool returns the command modified to run claude with
-// --permission-mode auto. Only claude is affected; other tools are unchanged.
+// autoCommandForTool returns the command modified to run with each tool's
+// low-friction automatic approval mode.
 func autoCommandForTool(tool, command string) string {
-	if tool != "claude" {
-		return command
+	switch tool {
+	case "claude":
+		cmd := strings.ReplaceAll(command, "--permission-mode acceptEdits", "--permission-mode auto")
+		if cmd == command {
+			cmd = strings.TrimSpace(command) + " --permission-mode auto"
+		}
+		return strings.TrimSpace(cmd)
+	case "codex":
+		if strings.HasPrefix(command, "codex ") {
+			return "codex --full-auto " + command[len("codex "):]
+		}
 	}
-	cmd := strings.ReplaceAll(command, "--permission-mode acceptEdits", "--permission-mode auto")
-	if cmd == command {
-		cmd = strings.TrimSpace(command) + " --permission-mode auto"
-	}
-	return strings.TrimSpace(cmd)
+	return command
 }
 
 // yoloCommandForTool returns the command modified to run in yolo/auto-approve mode.
@@ -1581,7 +1589,7 @@ func (m model) viewHome() string {
 			lines = append(lines, fmt.Sprintf("%s fresh: off", keyStyle.Render("f")))
 		}
 		if m.newToolAuto {
-			lines = append(lines, fmt.Sprintf("%s auto: %s", keyStyle.Render("a"), yoloStyle.Render("ON (claude --permission-mode auto)")))
+			lines = append(lines, fmt.Sprintf("%s auto: %s", keyStyle.Render("a"), yoloStyle.Render("ON (claude auto/codex full-auto)")))
 		} else {
 			lines = append(lines, fmt.Sprintf("%s auto: off", keyStyle.Render("a")))
 		}
@@ -2102,7 +2110,7 @@ Interactive mode keybindings:
   x               Attach codex (picker if multiple, create if none)
   u               Attach cursor (picker if multiple, create if none)
   z               Jump directory with fasder query
-  n               New instance (then y to toggle yolo, then c/x/u)
+  n               New instance (then a for auto or y for yolo, then c/x/u)
   k               Kill one instance (then c/x/u and picker if needed)
   r               Rename one instance (same flow as k)
   t               Toggle per-session task lines on home screen
